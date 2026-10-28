@@ -64,10 +64,9 @@ class MapController extends Controller
         $ids = $area?->selfAndDescendantIds();
 
         /*
-         * Filter berdasarkan wilayah.
+         * Filter ketat berdasarkan wilayah.
          *
-         * Jika $area null:
-         * semua wilayah ditampilkan.
+         * Jika $area null: semua wilayah ditampilkan.
          */
         $inArea = fn (Builder $query) =>
             $query->when(
@@ -79,6 +78,10 @@ class MapController extends Controller
                     ),
             );
 
+        /*
+         * Filter wilayah + data global (area_id null).
+         * Dipakai hanya untuk kontak darurat dan pengumuman.
+         */
         $inAreaOrGlobal = fn (Builder $query) =>
             $query->when(
                 $ids,
@@ -163,10 +166,11 @@ class MapController extends Controller
             ]);
 
         /*
-         * ZONA RAWAN
+         * ZONA RAWAN (ketat per wilayah)
          */
         $zones = $inArea(
-            HazardZone::query(),
+            HazardZone::query()
+                ->whereNotNull('geojson'),
         )->get([
             'id',
             'disaster_type_id',
@@ -177,11 +181,13 @@ class MapController extends Controller
         ]);
 
         /*
-         * FASILITAS
+         * FASILITAS (ketat per wilayah)
          */
         $facilities = $inArea(
             Facility::query()
-                ->where('is_active', true),
+                ->where('is_active', true)
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude'),
         )
             ->get([
                 'id',

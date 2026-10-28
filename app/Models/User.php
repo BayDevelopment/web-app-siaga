@@ -76,6 +76,16 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 
     public function isPetugas(): bool
     {
+        return $this->role === 'petugas';
+    }
+
+    public function isStaff(): bool
+    {
         return in_array($this->role, ['admin', 'petugas'], true);
+    }
+
+    public function isWarga(): bool
+    {
+        return $this->role === 'warga';
     }
 }

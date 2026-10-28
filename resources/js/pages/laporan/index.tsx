@@ -1,181 +1,265 @@
-import { Head, Link } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    ArrowRight,
+    Calendar,
+    ClipboardList,
+    ListFilter,
+    MapPin,
+    Plus,
+    Search,
+    ShieldCheck,
+    Siren,
+    User,
+} from 'lucide-react';
+import {
+    useEffect,
+    useState,
+    type CSSProperties,
+    type ReactNode,
+} from 'react';
 
-type DisasterType = {
-    id: number;
-    name: string;
-    slug: string;
-    color: string;
-};
+import FlashMessage from '@/components/flash-message';
+import { SeverityBadge, StatusBadge } from '@/components/report/badges';
+import {
+    ALL_STATUSES,
+    PUBLIC_STATUSES,
+    SEVERITY_META,
+    SEVERITY_ORDER,
+    STATUS_META,
+    formatDateTime,
+    type DisasterType,
+} from '@/lib/report';
 
-type Area = {
-    id: number;
-    name: string;
-    slug: string;
-};
+type Tone = 'navy' | 'sea' | 'sun' | 'forest';
 
-type Report = {
+type ReportItem = {
     id: number;
     code: string;
     title: string;
     description: string | null;
-
-    location: {
-        lat: number;
-        lng: number;
-        address: string | null;
-    };
-
-    severity: 'low' | 'medium' | 'high' | 'critical' | string;
-    status: 'pending' | 'verified' | 'active' | 'resolved' | 'rejected' | string;
-
+    location: { lat: number; lng: number; address: string | null };
+    severity: string;
+    status: string;
     occurred_at: string | null;
-
+    is_mine: boolean;
     type: DisasterType | null;
-    area: Area | null;
+    area: { id: number; name: string; slug: string } | null;
 };
 
-type PaginationLink = {
-    url: string | null;
-    label: string;
-    active: boolean;
-};
+type PaginationLink = { url: string | null; label: string; active: boolean };
 
-type PaginatedReports = {
-    data: Report[];
-    current_page: number;
-    last_page: number;
-    per_page: number;
+type Paginated<T> = {
+    data: T[];
     total: number;
-    from: number | null;
-    to: number | null;
+    last_page: number;
     links: PaginationLink[];
 };
 
+type Filters = {
+    search: string;
+    type: string;
+    status: string;
+    severity: string;
+    mine: boolean;
+};
+
 type Props = {
-    reports: PaginatedReports;
+    reports: Paginated<ReportItem>;
+    filters: Filters;
+    stats: { total: number; verified: number; handling: number };
     types: DisasterType[];
+    can: { create: boolean; see_all: boolean };
 };
 
-const statusLabels: Record<string, string> = {
-    pending: 'Menunggu Verifikasi',
-    verified: 'Terverifikasi',
-    active: 'Aktif',
-    resolved: 'Selesai',
-    rejected: 'Ditolak',
+/* Warna ikon mengikuti palet logo */
+const toneClass: Record<Tone, string> = {
+    navy: 'bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400',
+    sea: 'bg-sea-300/30 text-sea-500 dark:bg-sea-500/15 dark:text-sea-300',
+    sun: 'bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300',
+    forest: 'bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-400',
 };
 
-const severityLabels: Record<string, string> = {
-    low: 'Rendah',
-    medium: 'Sedang',
-    high: 'Tinggi',
-    critical: 'Kritis',
-};
+const controlClass =
+    'w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20';
 
-const statusClasses: Record<string, string> = {
-    pending: 'bg-amber-50 text-amber-700 ring-amber-200',
-    verified: 'bg-blue-50 text-blue-700 ring-blue-200',
-    active: 'bg-red-50 text-red-700 ring-red-200',
-    resolved: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    rejected: 'bg-gray-100 text-gray-600 ring-gray-200',
-};
+/* ---------- Helper animasi & skeleton ---------- */
 
-const severityClasses: Record<string, string> = {
-    low: 'text-emerald-600',
-    medium: 'text-amber-600',
-    high: 'text-orange-600',
-    critical: 'text-red-600',
-};
+function Reveal({
+    children,
+    delay = 0,
+    className = '',
+    fill = true,
+}: {
+    children: ReactNode;
+    delay?: number;
+    className?: string;
+    fill?: boolean;
+}) {
+    return (
+        <div
+            className={`${fill ? 'h-full' : ''} animate-fade-in-up ${className}`}
+            style={{ animationDelay: `${delay}ms` } as CSSProperties}
+        >
+            {children}
+        </div>
+    );
+}
 
-function formatDate(date: string | null) {
-    if (!date) {
-        return '-';
+/** Skeleton tampil sebentar saat halaman dibuka, dan setiap kali Inertia berpindah/filter. */
+function useLoading(initialMs = 600) {
+    const [initial, setInitial] = useState(true);
+    const [navigating, setNavigating] = useState(false);
+
+    useEffect(() => {
+        const t = setTimeout(() => setInitial(false), initialMs);
+        const offStart = router.on('start', () => setNavigating(true));
+        const offFinish = router.on('finish', () => setNavigating(false));
+
+        return () => {
+            clearTimeout(t);
+            offStart();
+            offFinish();
+        };
+    }, [initialMs]);
+
+    return initial || navigating;
+}
+
+function SummarySkeleton() {
+    return (
+        <div className="h-full rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 space-y-3">
+                    <div className="skeleton h-3 w-20" />
+                    <div className="skeleton h-7 w-12" />
+                </div>
+                <div className="skeleton size-10 rounded-xl" />
+            </div>
+        </div>
+    );
+}
+
+function ReportCardSkeleton() {
+    return (
+        <div className="h-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <div className="skeleton h-1.5 w-full rounded-none" />
+
+            <div className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-2">
+                        <div className="skeleton h-3.5 w-24" />
+                        <div className="skeleton h-5 w-3/4" />
+                    </div>
+                    <div className="space-y-2">
+                        <div className="skeleton h-5 w-20 rounded-full" />
+                        <div className="skeleton h-5 w-16 rounded-full" />
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <div className="skeleton h-3 w-full" />
+                    <div className="skeleton h-3 w-5/6" />
+                </div>
+
+                <div className="space-y-2 border-t border-border pt-4">
+                    <div className="skeleton h-3.5 w-2/3" />
+                    <div className="skeleton h-3.5 w-1/3" />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ---------- Halaman ---------- */
+
+export default function Index({ reports, filters, stats, types, can }: Props) {
+    const [search, setSearch] = useState(filters.search);
+    const loading = useLoading(600);
+
+    // Pencarian ditunda 300ms supaya tidak request di setiap ketikan.
+    useEffect(() => {
+        if (search === filters.search) {
+            return;
+        }
+
+        const timer = setTimeout(() => visit({ search }), 300);
+
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search]);
+
+    function visit(patch: Partial<Filters>) {
+        const next = { ...filters, ...patch };
+        const query: Record<string, string> = {};
+
+        if (next.search) query.search = next.search;
+        if (next.type) query.type = next.type;
+        if (next.status) query.status = next.status;
+        if (next.severity) query.severity = next.severity;
+        if (next.mine) query.mine = '1';
+
+        router.get('/laporan', query, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
     }
 
-    return new Intl.DateTimeFormat('id-ID', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(date));
-}
+    function reset() {
+        setSearch('');
+        router.get('/laporan', {}, { preserveScroll: true, replace: true });
+    }
 
-function getStatusLabel(status: string) {
-    return statusLabels[status] ?? status;
-}
+    const hasFilter = Boolean(
+        filters.search ||
+            filters.type ||
+            filters.status ||
+            filters.severity ||
+            filters.mine,
+    );
 
-function getSeverityLabel(severity: string) {
-    return severityLabels[severity] ?? severity;
-}
-
-export default function Index({ reports, types }: Props) {
-    const [search, setSearch] = useState('');
-    const [typeFilter, setTypeFilter] = useState('all');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [severityFilter, setSeverityFilter] = useState('all');
-
-    const filteredReports = useMemo(() => {
-        return reports.data.filter((report) => {
-            const keyword = search.toLowerCase().trim();
-
-            const matchesSearch =
-                keyword === '' ||
-                report.title.toLowerCase().includes(keyword) ||
-                report.code.toLowerCase().includes(keyword) ||
-                (report.description ?? '').toLowerCase().includes(keyword) ||
-                (report.area?.name ?? '').toLowerCase().includes(keyword) ||
-                (report.location.address ?? '').toLowerCase().includes(keyword);
-
-            const matchesType =
-                typeFilter === 'all' ||
-                report.type?.slug === typeFilter;
-
-            const matchesStatus =
-                statusFilter === 'all' ||
-                report.status === statusFilter;
-
-            const matchesSeverity =
-                severityFilter === 'all' ||
-                report.severity === severityFilter;
-
-            return (
-                matchesSearch &&
-                matchesType &&
-                matchesStatus &&
-                matchesSeverity
-            );
-        });
-    }, [
-        reports.data,
-        search,
-        typeFilter,
-        statusFilter,
-        severityFilter,
-    ]);
+    // Pengunjung umum hanya melihat laporan publik; staf atau "laporan saya"
+    // bisa memfilter semua status.
+    const statusOptions =
+        can.see_all || filters.mine ? ALL_STATUSES : PUBLIC_STATUSES;
 
     return (
         <>
-            <Head title="Laporan Kejadian" />
+            <Head title="Laporan kejadian" />
 
-            <div className="min-h-screen bg-slate-50">
-                {/* Header */}
-                <header className="border-b border-slate-200 bg-white">
-                    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative min-h-screen overflow-hidden bg-background">
+                {/* Blob latar halaman */}
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 overflow-hidden"
+                >
+                    <div className="blob -top-24 -left-24 h-80 w-80 animate-blob bg-navy-400/20" />
+                    <div className="blob top-1/3 -right-32 h-96 w-96 animate-blob-slow bg-sun-300/20" />
+                    <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15" />
+                </div>
+
+                <div className="relative mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+                    {/* HEADER */}
+                    <header className="relative animate-fade-in overflow-hidden rounded-3xl bg-linear-to-br from-navy-950 via-navy-900 to-navy-800 p-6 text-white shadow-xl shadow-navy-900/20 md:p-8">
+                        <div className="blob -top-20 -right-16 h-64 w-64 animate-blob bg-sun-400/30" />
+                        <div className="blob -bottom-24 left-1/3 h-64 w-64 animate-blob-slow bg-sea-400/25" />
+                        <div className="blob -bottom-14 -left-10 h-48 w-48 animate-blob bg-forest-500/25" />
+
+                        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <Link
-                                    href="/"
-                                    className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+                                    href="/peta"
+                                    className="group mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-navy-200 transition hover:text-white"
                                 >
-                                    ← Kembali ke Peta
+                                    <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                                    Kembali ke peta
                                 </Link>
 
-                                <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                                    Laporan Kejadian
+                                <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+                                    Laporan kejadian
                                 </h1>
-
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p className="mt-2 max-w-xl text-sm leading-6 text-navy-100/80">
                                     Pantau laporan kejadian dan kondisi darurat
                                     di wilayah SIAGA-W.
                                 </p>
@@ -183,206 +267,219 @@ export default function Index({ reports, types }: Props) {
 
                             <Link
                                 href="/laporan/create"
-                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                                className="group inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-sun-400 to-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-lg shadow-sun-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-sun-500/40"
                             >
-                                <span className="text-lg leading-none">+</span>
-                                Buat Laporan
+                                <Plus className="h-4 w-4" />
+                                {can.create
+                                    ? 'Buat laporan'
+                                    : 'Masuk untuk melapor'}
+                                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                             </Link>
                         </div>
-                    </div>
-                </header>
+                    </header>
 
-                <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-                    {/* Summary */}
-                    <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <SummaryCard
-                            label="Total Laporan"
-                            value={reports.total}
-                            icon="▣"
-                        />
+                    <FlashMessage />
 
-                        <SummaryCard
-                            label="Ditampilkan"
-                            value={filteredReports.length}
-                            icon="◉"
-                        />
-
-                        <SummaryCard
-                            label="Laporan Aktif"
-                            value={
-                                reports.data.filter(
-                                    (report) => report.status === 'active',
-                                ).length
-                            }
-                            icon="!"
-                            danger
-                        />
-
-                        <SummaryCard
-                            label="Terverifikasi"
-                            value={
-                                reports.data.filter(
-                                    (report) => report.status === 'verified',
-                                ).length
-                            }
-                            icon="✓"
-                        />
+                    {/* Ringkasan (dihitung server sesuai hak akses) */}
+                    <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {loading ? (
+                            Array.from({ length: 4 }).map((_, i) => (
+                                <SummarySkeleton key={i} />
+                            ))
+                        ) : (
+                            <>
+                                <Reveal delay={0}>
+                                    <SummaryCard
+                                        label="Total laporan"
+                                        value={stats.total}
+                                        icon={
+                                            <ClipboardList className="h-4 w-4" />
+                                        }
+                                        tone="navy"
+                                    />
+                                </Reveal>
+                                <Reveal delay={80}>
+                                    <SummaryCard
+                                        label="Sesuai filter"
+                                        value={reports.total}
+                                        icon={<ListFilter className="h-4 w-4" />}
+                                        tone="sea"
+                                    />
+                                </Reveal>
+                                <Reveal delay={160}>
+                                    <SummaryCard
+                                        label="Sedang ditangani"
+                                        value={stats.handling}
+                                        icon={<Siren className="h-4 w-4" />}
+                                        tone="sun"
+                                    />
+                                </Reveal>
+                                <Reveal delay={240}>
+                                    <SummaryCard
+                                        label="Terverifikasi"
+                                        value={stats.verified}
+                                        icon={
+                                            <ShieldCheck className="h-4 w-4" />
+                                        }
+                                        tone="forest"
+                                    />
+                                </Reveal>
+                            </>
+                        )}
                     </section>
 
                     {/* Filter */}
-                    <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="grid gap-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
-                            {/* Search */}
-                            <div className="relative">
-                                <label
-                                    htmlFor="search"
-                                    className="sr-only"
-                                >
-                                    Cari laporan
-                                </label>
+                    <Reveal delay={100} fill={false}>
+                        <section
+                            aria-label="Filter laporan"
+                            className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+                        >
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
+                                <div className="relative sm:col-span-2 lg:col-span-1">
+                                    <label htmlFor="search" className="sr-only">
+                                        Cari laporan
+                                    </label>
 
-                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                    🔎
-                                </span>
+                                    <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 
-                                <input
-                                    id="search"
-                                    type="text"
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
+                                    <input
+                                        id="search"
+                                        type="search"
+                                        value={search}
+                                        onChange={(e) =>
+                                            setSearch(e.target.value)
+                                        }
+                                        placeholder="Cari judul, kode, atau alamat"
+                                        className={`${controlClass} pl-10`}
+                                    />
+                                </div>
+
+                                <select
+                                    aria-label="Jenis kejadian"
+                                    value={filters.type}
+                                    onChange={(e) =>
+                                        visit({ type: e.target.value })
                                     }
-                                    placeholder="Cari laporan, lokasi, atau kode..."
-                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                                />
+                                    disabled={types.length === 0}
+                                    className={`${controlClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                                >
+                                    <option value="">
+                                        {types.length === 0
+                                            ? 'Belum ada jenis kejadian'
+                                            : 'Semua jenis kejadian'}
+                                    </option>
+                                    {types.map((type) => (
+                                        <option key={type.id} value={type.slug}>
+                                            {type.name}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    aria-label="Status"
+                                    value={filters.status}
+                                    onChange={(e) =>
+                                        visit({ status: e.target.value })
+                                    }
+                                    className={controlClass}
+                                >
+                                    <option value="">Semua status</option>
+                                    {statusOptions.map((status) => (
+                                        <option key={status} value={status}>
+                                            {STATUS_META[status].label}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    aria-label="Tingkat keparahan"
+                                    value={filters.severity}
+                                    onChange={(e) =>
+                                        visit({ severity: e.target.value })
+                                    }
+                                    className={controlClass}
+                                >
+                                    <option value="">
+                                        Semua tingkat keparahan
+                                    </option>
+                                    {SEVERITY_ORDER.map((severity) => (
+                                        <option key={severity} value={severity}>
+                                            {SEVERITY_META[severity].label}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
-                            {/* Type */}
-                            <select
-                                value={typeFilter}
-                                onChange={(event) =>
-                                    setTypeFilter(event.target.value)
-                                }
-                                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                            >
-                                <option value="all">
-                                    Semua Jenis Kejadian
-                                </option>
+                            {can.create && (
+                                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                                    <input
+                                        type="checkbox"
+                                        checked={filters.mine}
+                                        onChange={(e) =>
+                                            visit({ mine: e.target.checked })
+                                        }
+                                        className="h-4 w-4 rounded accent-primary"
+                                    />
+                                    Hanya laporan saya
+                                </label>
+                            )}
+                        </section>
+                    </Reveal>
 
-                                {types.map((type) => (
-                                    <option
-                                        key={type.id}
-                                        value={type.slug}
-                                    >
-                                        {type.name}
-                                    </option>
-                                ))}
-                            </select>
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm text-muted-foreground">
+                            {reports.total} laporan ditemukan
+                        </p>
 
-                            {/* Status */}
-                            <select
-                                value={statusFilter}
-                                onChange={(event) =>
-                                    setStatusFilter(event.target.value)
-                                }
-                                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                            >
-                                <option value="all">Semua Status</option>
-                                <option value="pending">
-                                    Menunggu Verifikasi
-                                </option>
-                                <option value="verified">
-                                    Terverifikasi
-                                </option>
-                                <option value="active">Aktif</option>
-                                <option value="resolved">Selesai</option>
-                                <option value="rejected">Ditolak</option>
-                            </select>
-
-                            {/* Severity */}
-                            <select
-                                value={severityFilter}
-                                onChange={(event) =>
-                                    setSeverityFilter(event.target.value)
-                                }
-                                className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                            >
-                                <option value="all">
-                                    Semua Tingkat Keparahan
-                                </option>
-                                <option value="low">Rendah</option>
-                                <option value="medium">Sedang</option>
-                                <option value="high">Tinggi</option>
-                                <option value="critical">Kritis</option>
-                            </select>
-                        </div>
-                    </section>
-
-                    {/* Result info */}
-                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h2 className="font-semibold text-slate-900">
-                                Daftar Kejadian
-                            </h2>
-
-                            <p className="text-sm text-slate-500">
-                                {filteredReports.length} laporan ditemukan
-                            </p>
-                        </div>
-
-                        {(search ||
-                            typeFilter !== 'all' ||
-                            statusFilter !== 'all' ||
-                            severityFilter !== 'all') && (
+                        {hasFilter && (
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setSearch('');
-                                    setTypeFilter('all');
-                                    setStatusFilter('all');
-                                    setSeverityFilter('all');
-                                }}
-                                className="text-left text-sm font-medium text-slate-600 transition hover:text-slate-900 sm:text-right"
+                                onClick={reset}
+                                className="text-sm font-semibold text-navy-600 transition hover:text-navy-800 hover:underline dark:text-navy-400 dark:hover:text-navy-200"
                             >
                                 Reset filter
                             </button>
                         )}
                     </div>
 
-                    {/* Reports */}
-                    {filteredReports.length > 0 ? (
+                    {/* Daftar laporan: kartu dalam satu baris sama tinggi */}
+                    {loading ? (
                         <div className="grid gap-4 lg:grid-cols-2">
-                            {filteredReports.map((report) => (
-                                <ReportCard
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <ReportCardSkeleton key={i} />
+                            ))}
+                        </div>
+                    ) : reports.data.length > 0 ? (
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            {reports.data.map((report, index) => (
+                                <Reveal
                                     key={report.id}
-                                    report={report}
-                                />
+                                    delay={Math.min(index, 8) * 60}
+                                >
+                                    <ReportCard report={report} />
+                                </Reveal>
                             ))}
                         </div>
                     ) : (
-                        <EmptyState
-                            hasFilter={
-                                search !== '' ||
-                                typeFilter !== 'all' ||
-                                statusFilter !== 'all' ||
-                                severityFilter !== 'all'
-                            }
-                        />
+                        <EmptyState hasFilter={hasFilter} onReset={reset} />
                     )}
 
-                    {/* Pagination */}
                     {reports.last_page > 1 && (
-                        <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                        <nav
+                            aria-label="Halaman"
+                            className="flex flex-wrap items-center justify-center gap-2 pt-2"
+                        >
                             {reports.links.map((link, index) => {
+                                const text = pageLabel(link.label);
+
                                 if (!link.url) {
                                     return (
                                         <span
                                             key={index}
-                                            className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-400"
-                                            dangerouslySetInnerHTML={{
-                                                __html: link.label,
-                                            }}
-                                        />
+                                            className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+                                        >
+                                            {text}
+                                        </span>
                                     );
                                 }
 
@@ -391,62 +488,63 @@ export default function Index({ reports, types }: Props) {
                                         key={index}
                                         href={link.url}
                                         preserveScroll
+                                        aria-current={
+                                            link.active ? 'page' : undefined
+                                        }
                                         className={[
-                                            'rounded-lg border px-3 py-2 text-sm font-medium transition',
+                                            'rounded-lg border px-3 py-2 text-sm font-medium transition-all duration-200',
                                             link.active
-                                                ? 'border-slate-900 bg-slate-900 text-white'
-                                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
+                                                ? 'border-primary bg-primary text-primary-foreground shadow-md shadow-navy-500/20'
+                                                : 'border-border bg-card text-muted-foreground hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-800 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10 dark:hover:text-navy-200',
                                         ].join(' ')}
-                                        dangerouslySetInnerHTML={{
-                                            __html: link.label,
-                                        }}
-                                    />
+                                    >
+                                        {text}
+                                    </Link>
                                 );
                             })}
-                        </div>
+                        </nav>
                     )}
-                </main>
+                </div>
             </div>
         </>
     );
+}
+
+/** Label pagination Laravel (Inggris + entitas HTML) jadi teks Indonesia. */
+function pageLabel(label: string): string {
+    const text = label.replace(/&laquo;|&raquo;/g, '').trim();
+
+    if (/previous/i.test(text)) return '‹ Sebelumnya';
+    if (/next/i.test(text)) return 'Berikutnya ›';
+
+    return text;
 }
 
 function SummaryCard({
     label,
     value,
     icon,
-    danger = false,
+    tone = 'navy',
 }: {
     label: string;
     value: number;
-    icon: string;
-    danger?: boolean;
+    icon: ReactNode;
+    tone?: Tone;
 }) {
     return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="group h-full rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40">
             <div className="flex items-center justify-between gap-3">
-                <div>
-                    <p className="text-xs font-medium text-slate-500">
+                <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-muted-foreground">
                         {label}
                     </p>
-
-                    <p
-                        className={[
-                            'mt-1 text-2xl font-bold',
-                            danger ? 'text-red-600' : 'text-slate-900',
-                        ].join(' ')}
-                    >
+                    <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={[
-                        'flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold',
-                        danger
-                            ? 'bg-red-50 text-red-600'
-                            : 'bg-slate-100 text-slate-600',
-                    ].join(' ')}
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${toneClass[tone]}`}
                 >
                     {icon}
                 </div>
@@ -455,121 +553,80 @@ function SummaryCard({
     );
 }
 
-function ReportCard({ report }: { report: Report }) {
-    const typeColor = report.type?.color ?? '#64748b';
-
-    const statusClass =
-        statusClasses[report.status] ??
-        'bg-slate-100 text-slate-600 ring-slate-200';
-
-    const severityClass =
-        severityClasses[report.severity] ?? 'text-slate-600';
+function ReportCard({ report }: { report: ReportItem }) {
+    const color = report.type?.color ?? '#64748b';
 
     return (
-        <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-            {/* Type indicator */}
-            <div
-                className="h-1.5 w-full"
-                style={{ backgroundColor: typeColor }}
-            />
+        <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40">
+            <div className="h-1.5 w-full" style={{ backgroundColor: color }} />
 
-            <div className="p-5">
-                {/* Header */}
+            <div className="flex flex-1 flex-col p-5">
                 <div className="flex items-start justify-between gap-4">
-                    <div className="flex min-w-0 items-start gap-3">
-                        <div
-                            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
-                            style={{
-                                backgroundColor: typeColor,
-                            }}
+                    <div className="min-w-0">
+                        <p
+                            className="text-sm font-semibold"
+                            style={{ color }}
                         >
-                            !
-                        </div>
+                            {report.type?.name ?? 'Jenis tidak diketahui'}
+                        </p>
 
-                        <div className="min-w-0">
-                            <p
-                                className="text-xs font-semibold uppercase tracking-wide"
-                                style={{ color: typeColor }}
+                        <h3 className="mt-0.5 line-clamp-2 font-semibold text-foreground">
+                            <Link
+                                href={`/laporan/${report.id}`}
+                                className="hover:underline"
                             >
-                                {report.type?.name ?? 'Tidak diketahui'}
-                            </p>
-
-                            <h3 className="mt-0.5 line-clamp-2 font-semibold text-slate-900">
                                 {report.title}
-                            </h3>
-                        </div>
+                            </Link>
+                        </h3>
                     </div>
 
-                    <span
-                        className={[
-                            'shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1',
-                            statusClass,
-                        ].join(' ')}
-                    >
-                        {getStatusLabel(report.status)}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <StatusBadge status={report.status} />
+                        <SeverityBadge severity={report.severity} />
+                    </div>
                 </div>
 
-                {/* Description */}
                 {report.description && (
-                    <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-600">
+                    <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">
                         {report.description}
                     </p>
                 )}
 
-                {/* Information */}
-                <div className="mt-4 space-y-2.5 border-t border-slate-100 pt-4">
-                    <div className="flex items-start gap-2 text-sm text-slate-600">
-                        <span className="w-5 shrink-0 text-center">📍</span>
-
+                <ul className="mt-4 space-y-2 border-t border-border pt-4 text-sm text-muted-foreground">
+                    <li className="flex items-start gap-2">
+                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sun-500" />
                         <span className="line-clamp-2">
                             {report.location.address ??
                                 report.area?.name ??
                                 'Lokasi tidak tersedia'}
                         </span>
-                    </div>
+                    </li>
 
-                    {report.area && (
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <span className="w-5 shrink-0 text-center">
-                                ◉
-                            </span>
+                    <li className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 shrink-0 text-navy-500" />
+                        {formatDateTime(report.occurred_at)}
+                    </li>
 
-                            <span>{report.area.name}</span>
-                        </div>
+                    {report.is_mine && (
+                        <li className="flex items-center gap-2 text-foreground">
+                            <User className="h-4 w-4 shrink-0 text-forest-500" />
+                            Laporan saya
+                        </li>
                     )}
+                </ul>
 
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                            <span className="w-5 text-center">◷</span>
-
-                            <span>
-                                {formatDate(report.occurred_at)}
-                            </span>
-                        </div>
-
-                        <span
-                            className={[
-                                'text-xs font-semibold',
-                                severityClass,
-                            ].join(' ')}
-                        >
-                            {getSeverityLabel(report.severity)}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Footer */}
-                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                    <span className="text-xs text-slate-400">
+                {/* mt-auto: footer selalu menempel di bawah kartu */}
+                <div className="mt-auto flex items-center justify-between border-t border-border pt-4">
+                    <span className="pt-0 text-xs text-muted-foreground">
                         {report.code}
                     </span>
 
                     <Link
                         href={`/laporan/${report.id}`}
-                        className="text-sm font-semibold text-slate-700 transition group-hover:text-slate-900"
+                        className="inline-flex items-center gap-1 text-sm font-semibold text-navy-600 transition hover:text-navy-800 dark:text-navy-400 dark:hover:text-navy-200"
                     >
-                        Lihat Detail →
+                        Lihat detail
+                        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
                     </Link>
                 </div>
             </div>
@@ -577,29 +634,41 @@ function ReportCard({ report }: { report: Report }) {
     );
 }
 
-function EmptyState({ hasFilter }: { hasFilter: boolean }) {
+function EmptyState({
+    hasFilter,
+    onReset,
+}: {
+    hasFilter: boolean;
+    onReset: () => void;
+}) {
     return (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
-                {hasFilter ? '🔎' : '📋'}
+        <div className="animate-fade-in rounded-2xl border border-dashed border-navy-200 bg-card px-6 py-16 text-center dark:border-navy-500/30">
+            <div className="mx-auto flex size-14 animate-float items-center justify-center rounded-2xl bg-navy-100 text-navy-500 dark:bg-navy-500/15">
+                {hasFilter ? (
+                    <Search className="h-6 w-6" />
+                ) : (
+                    <ClipboardList className="h-6 w-6" />
+                )}
             </div>
 
-            <h3 className="mt-4 font-semibold text-slate-900">
-                {hasFilter
-                    ? 'Laporan tidak ditemukan'
-                    : 'Belum ada laporan'}
+            <h3 className="mt-4 font-semibold text-foreground">
+                {hasFilter ? 'Laporan tidak ditemukan' : 'Belum ada laporan'}
             </h3>
 
-            <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">
+            <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted-foreground">
                 {hasFilter
-                    ? 'Coba ubah kata pencarian atau filter yang digunakan.'
-                    : 'Belum terdapat laporan kejadian yang dapat ditampilkan.'}
+                    ? 'Ubah kata kunci atau filter, atau reset untuk melihat semua laporan.'
+                    : 'Belum ada laporan kejadian yang bisa ditampilkan.'}
             </p>
 
             {hasFilter && (
-                <p className="mt-4 text-sm text-slate-400">
-                    Silakan reset filter untuk melihat seluruh laporan.
-                </p>
+                <button
+                    type="button"
+                    onClick={onReset}
+                    className="mt-5 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground transition hover:border-navy-200 hover:bg-navy-50 dark:hover:bg-navy-500/10"
+                >
+                    Reset filter
+                </button>
             )}
         </div>
     );

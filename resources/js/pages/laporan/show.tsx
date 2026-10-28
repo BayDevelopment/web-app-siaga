@@ -1,375 +1,604 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    Clock,
+    ExternalLink,
+    Info,
+    Pencil,
+    Trash2,
+    TriangleAlert,
+} from 'lucide-react';
+import {
+    useEffect,
+    useState,
+    type CSSProperties,
+    type ReactNode,
+} from 'react';
 
-type DisasterType = {
-    id: number;
-    name: string;
-    slug: string;
-    color: string;
-};
-
-type Area = {
-    id: number;
-    name: string;
-    slug: string;
-};
+import FlashMessage from '@/components/flash-message';
+import { SeverityBadge, StatusBadge } from '@/components/report/badges';
+import {
+    formatDateTime,
+    statusMeta,
+    type DisasterType,
+    type ReportPhoto,
+    type ReportUpdateItem,
+} from '@/lib/report';
 
 type Report = {
     id: number;
     code: string;
     title: string;
     description: string | null;
-
-    location: {
-        lat: number;
-        lng: number;
-        address: string | null;
-    };
-
+    location: { lat: number; lng: number; address: string | null };
     severity: string;
     status: string;
     occurred_at: string | null;
-
+    created_at: string | null;
     type: DisasterType | null;
-    area: Area | null;
-
-    created_at?: string | null;
-    updated_at?: string | null;
+    area: {
+        id: number;
+        name: string;
+        slug: string;
+        parent: string | null;
+    } | null;
+    photos: ReportPhoto[];
+    updates: ReportUpdateItem[];
 };
 
 type Props = {
     report: Report;
+    is_owner: boolean;
+    can: { update: boolean; delete: boolean };
 };
 
-const severityConfig: Record<
-    string,
-    {
-        label: string;
-        className: string;
+/* ---------- Helper animasi & skeleton ---------- */
+
+function Reveal({
+    children,
+    delay = 0,
+    className = '',
+}: {
+    children: ReactNode;
+    delay?: number;
+    className?: string;
+}) {
+    return (
+        <div
+            className={`animate-fade-in-up ${className}`}
+            style={{ animationDelay: `${delay}ms` } as CSSProperties}
+        >
+            {children}
+        </div>
+    );
+}
+
+function useFakeLoading(ms = 600) {
+    // Ganti dengan state asli bila perlu (mis. Inertia deferred props)
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const t = setTimeout(() => setLoading(false), ms);
+        return () => clearTimeout(t);
+    }, [ms]);
+
+    return loading;
+}
+
+function CardSkeleton({ lines = 3 }: { lines?: number }) {
+    return (
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="skeleton mb-5 h-5 w-40" />
+
+            <div className="space-y-3">
+                {Array.from({ length: lines }).map((_, i) => (
+                    <div
+                        key={i}
+                        className="skeleton h-3.5"
+                        style={{ width: `${100 - i * 12}%` }}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/* ---------- Halaman ---------- */
+
+export default function Show({ report, is_owner, can }: Props) {
+    const loading = useFakeLoading(600);
+
+    const hasCoords = report.location.lat != null && report.location.lng != null;
+
+    const mapUrl = hasCoords
+        ? `https://www.google.com/maps?q=${report.location.lat},${report.location.lng}`
+        : null;
+
+    const typeColor = report.type?.color ?? '#64748b';
+
+    function handleDelete() {
+        if (
+            !window.confirm(
+                'Hapus laporan ini? Laporan tidak akan tampil lagi.',
+            )
+        ) {
+            return;
+        }
+
+        router.delete(`/laporan/${report.id}`);
     }
-> = {
-    low: {
-        label: 'Rendah',
-        className: 'bg-emerald-100 text-emerald-700',
-    },
-    medium: {
-        label: 'Sedang',
-        className: 'bg-yellow-100 text-yellow-700',
-    },
-    high: {
-        label: 'Tinggi',
-        className: 'bg-orange-100 text-orange-700',
-    },
-    critical: {
-        label: 'Kritis',
-        className: 'bg-red-100 text-red-700',
-    },
-};
-
-const statusConfig: Record<
-    string,
-    {
-        label: string;
-        className: string;
-    }
-> = {
-    pending: {
-        label: 'Menunggu Verifikasi',
-        className: 'bg-yellow-100 text-yellow-700',
-    },
-    verified: {
-        label: 'Terverifikasi',
-        className: 'bg-blue-100 text-blue-700',
-    },
-    active: {
-        label: 'Aktif',
-        className: 'bg-red-100 text-red-700',
-    },
-    resolved: {
-        label: 'Selesai',
-        className: 'bg-emerald-100 text-emerald-700',
-    },
-    rejected: {
-        label: 'Ditolak',
-        className: 'bg-slate-100 text-slate-600',
-    },
-};
-
-export default function Show({ report }: Props) {
-    const severity =
-        severityConfig[report.severity] ?? {
-            label: report.severity,
-            className: 'bg-slate-100 text-slate-600',
-        };
-
-    const status =
-        statusConfig[report.status] ?? {
-            label: report.status,
-            className: 'bg-slate-100 text-slate-600',
-        };
-
-    const formatDate = (date: string | null) => {
-        if (!date) return '-';
-
-        return new Intl.DateTimeFormat('id-ID', {
-            dateStyle: 'long',
-            timeStyle: 'short',
-        }).format(new Date(date));
-    };
-
-    const mapUrl =
-        report.location?.lat && report.location?.lng
-            ? `https://www.google.com/maps?q=${report.location.lat},${report.location.lng}`
-            : '#';
 
     return (
         <>
             <Head title={`${report.code} - ${report.title}`} />
 
-            <div className="min-h-screen bg-slate-50">
-                <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+            <div className="relative min-h-screen overflow-hidden bg-background">
+                {/* Blob latar halaman */}
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 overflow-hidden"
+                >
+                    <div className="blob -top-24 -left-24 h-80 w-80 animate-blob bg-navy-400/20" />
+                    <div className="blob top-1/3 -right-32 h-96 w-96 animate-blob-slow bg-sun-300/20" />
+                    <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15" />
+                </div>
 
-                    {/* Breadcrumb */}
-                    <div className="mb-6 flex items-center gap-2 text-sm text-slate-500">
+                <div className="relative mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+                    <nav
+                        aria-label="Breadcrumb"
+                        className="mb-5 flex animate-fade-in items-center gap-2 text-sm text-muted-foreground"
+                    >
                         <Link
                             href="/laporan"
-                            className="transition hover:text-blue-600"
+                            className="group inline-flex items-center gap-1.5 transition hover:text-foreground"
                         >
+                            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
                             Laporan
                         </Link>
-
-                        <span>/</span>
-
-                        <span className="text-slate-700">
+                        <span aria-hidden="true">/</span>
+                        <span className="font-medium text-foreground">
                             {report.code}
                         </span>
-                    </div>
+                    </nav>
+
+                    <FlashMessage />
+
+                    {/* Banner untuk pemilik */}
+                    {is_owner && report.status === 'pending' && (
+                        <Banner
+                            tone="sun"
+                            icon={<Clock className="h-5 w-5" />}
+                            title="Laporan Anda menunggu verifikasi"
+                        >
+                            Laporan ini baru tampil untuk publik setelah
+                            diverifikasi administrator. Selama menunggu, Anda
+                            masih bisa mengedit atau menghapusnya.
+                        </Banner>
+                    )}
+
+                    {is_owner && report.status === 'rejected' && (
+                        <Banner
+                            tone="red"
+                            icon={<TriangleAlert className="h-5 w-5" />}
+                            title="Laporan Anda ditolak"
+                        >
+                            Lihat riwayat perkembangan di bawah untuk
+                            mengetahui alasannya.
+                        </Banner>
+                    )}
 
                     {/* Header */}
-                    <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
+                    <header className="relative mb-6 animate-fade-in overflow-hidden rounded-3xl bg-linear-to-br from-navy-950 via-navy-900 to-navy-800 text-white shadow-xl shadow-navy-900/20">
+                        <div className="blob -top-20 -right-16 h-64 w-64 animate-blob bg-sun-400/30" />
+                        <div className="blob -bottom-24 left-1/3 h-64 w-64 animate-blob-slow bg-sea-400/25" />
+                        <div className="blob -bottom-14 -left-10 h-48 w-48 animate-blob bg-forest-500/25" />
 
-                            <div>
+                        {/* Garis warna jenis kejadian */}
+                        <div
+                            className="relative h-1.5 w-full"
+                            style={{ backgroundColor: typeColor }}
+                        />
+
+                        <div className="relative flex flex-col justify-between gap-5 p-6 md:flex-row md:items-start md:p-8">
+                            <div className="min-w-0">
                                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                                    <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                    <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-xs font-semibold text-navy-50 backdrop-blur">
                                         {report.code}
                                     </span>
-
-                                    <span
-                                        className={`rounded-lg px-3 py-1 text-xs font-semibold ${status.className}`}
-                                    >
-                                        {status.label}
-                                    </span>
-
-                                    <span
-                                        className={`rounded-lg px-3 py-1 text-xs font-semibold ${severity.className}`}
-                                    >
-                                        {severity.label}
-                                    </span>
+                                    <StatusBadge status={report.status} />
+                                    <SeverityBadge severity={report.severity} />
                                 </div>
 
-                                <h1 className="text-2xl font-bold text-slate-900">
+                                <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
                                     {report.title}
                                 </h1>
 
-                                <p className="mt-2 text-sm text-slate-500">
-                                    Dilaporkan pada {formatDate(report.occurred_at)}
+                                <p className="mt-2 text-sm text-navy-200">
+                                    Terjadi pada{' '}
+                                    {formatDateTime(report.occurred_at)}
                                 </p>
                             </div>
 
-                            <Link
-                                href={`/laporan/${report.id}/edit`}
-                                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-                            >
-                                ✏️ Edit Laporan
-                            </Link>
+                            {(can.update || can.delete) && (
+                                <div className="flex shrink-0 flex-wrap gap-2">
+                                    {can.update && (
+                                        <Link
+                                            href={`/laporan/${report.id}/edit`}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-linear-to-r from-sun-400 to-sun-500 px-4 py-2.5 text-sm font-semibold text-navy-950 shadow-lg shadow-sun-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-sun-500/40"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                            Edit
+                                        </Link>
+                                    )}
+
+                                    {can.delete && (
+                                        <button
+                                            type="button"
+                                            onClick={handleDelete}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-200 transition hover:bg-red-500/25"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            Hapus
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    </header>
 
                     <div className="grid gap-6 lg:grid-cols-3">
-
-                        {/* Main */}
+                        {/* Utama */}
                         <div className="space-y-6 lg:col-span-2">
+                            {loading ? (
+                                <>
+                                    <CardSkeleton lines={4} />
+                                    <CardSkeleton lines={3} />
+                                    <CardSkeleton lines={3} />
+                                </>
+                            ) : (
+                                <>
+                                    <Reveal delay={0}>
+                                        <Card title="Deskripsi kejadian">
+                                            {report.description ? (
+                                                <p className="text-sm leading-7 whitespace-pre-line text-muted-foreground">
+                                                    {report.description}
+                                                </p>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground/70">
+                                                    Pelapor tidak menambahkan
+                                                    deskripsi.
+                                                </p>
+                                            )}
+                                        </Card>
+                                    </Reveal>
 
-                            {/* Deskripsi */}
-                            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                                <h2 className="mb-4 text-lg font-semibold text-slate-900">
-                                    Deskripsi Kejadian
-                                </h2>
-
-                                {report.description ? (
-                                    <p className="whitespace-pre-line text-sm leading-7 text-slate-600">
-                                        {report.description}
-                                    </p>
-                                ) : (
-                                    <p className="text-sm italic text-slate-400">
-                                        Tidak ada deskripsi kejadian.
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Lokasi */}
-                            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                                <div className="mb-5 flex items-center justify-between">
-                                    <h2 className="text-lg font-semibold text-slate-900">
-                                        Lokasi Kejadian
-                                    </h2>
-
-                                    {report.location?.lat &&
-                                        report.location?.lng && (
-                                            <a
-                                                href={mapUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                                    {report.photos.length > 0 && (
+                                        <Reveal delay={80}>
+                                            <Card
+                                                title={`Foto (${report.photos.length})`}
                                             >
-                                                Buka di Maps →
-                                            </a>
-                                        )}
-                                </div>
+                                                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                                    {report.photos.map(
+                                                        (photo, index) => (
+                                                            <li key={photo.id}>
+                                                                <a
+                                                                    href={
+                                                                        photo.url
+                                                                    }
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="group block overflow-hidden rounded-xl border border-border shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
+                                                                >
+                                                                    <img
+                                                                        src={
+                                                                            photo.url
+                                                                        }
+                                                                        alt={
+                                                                            photo.caption ??
+                                                                            `Foto laporan ${index + 1}`
+                                                                        }
+                                                                        loading="lazy"
+                                                                        className="aspect-square w-full object-cover transition duration-500 group-hover:scale-105"
+                                                                    />
+                                                                </a>
 
-                                <div className="rounded-xl bg-slate-100 p-5">
-                                    <div className="mb-4">
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                            Alamat
-                                        </p>
+                                                                {photo.caption && (
+                                                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                                                        {
+                                                                            photo.caption
+                                                                        }
+                                                                    </p>
+                                                                )}
+                                                            </li>
+                                                        ),
+                                                    )}
+                                                </ul>
+                                            </Card>
+                                        </Reveal>
+                                    )}
 
-                                        <p className="mt-1 text-sm text-slate-700">
-                                            {report.location?.address || '-'}
-                                        </p>
-                                    </div>
+                                    <Reveal delay={160}>
+                                        <Card
+                                            title="Lokasi kejadian"
+                                            action={
+                                                mapUrl && (
+                                                    <a
+                                                        href={mapUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-navy-600 transition hover:text-navy-800 dark:text-navy-400 dark:hover:text-navy-200"
+                                                    >
+                                                        Buka di Maps
+                                                        <ExternalLink className="h-3.5 w-3.5" />
+                                                    </a>
+                                                )
+                                            }
+                                        >
+                                            <dl className="space-y-4 rounded-xl bg-navy-50 p-5 dark:bg-navy-500/10">
+                                                <div>
+                                                    <dt className="text-xs font-medium text-muted-foreground">
+                                                        Alamat
+                                                    </dt>
+                                                    <dd className="mt-1 text-sm text-foreground">
+                                                        {report.location
+                                                            .address || '-'}
+                                                    </dd>
+                                                </div>
 
-                                    <div className="grid gap-4 sm:grid-cols-2">
-                                        <div>
-                                            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                                Latitude
-                                            </p>
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <div>
+                                                        <dt className="text-xs font-medium text-muted-foreground">
+                                                            Latitude
+                                                        </dt>
+                                                        <dd className="mt-1 font-mono text-sm text-foreground">
+                                                            {
+                                                                report.location
+                                                                    .lat
+                                                            }
+                                                        </dd>
+                                                    </div>
 
-                                            <p className="mt-1 font-mono text-sm text-slate-700">
-                                                {report.location?.lat ?? '-'}
-                                            </p>
-                                        </div>
+                                                    <div>
+                                                        <dt className="text-xs font-medium text-muted-foreground">
+                                                            Longitude
+                                                        </dt>
+                                                        <dd className="mt-1 font-mono text-sm text-foreground">
+                                                            {
+                                                                report.location
+                                                                    .lng
+                                                            }
+                                                        </dd>
+                                                    </div>
+                                                </div>
+                                            </dl>
 
-                                        <div>
-                                            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                                Longitude
-                                            </p>
+                                            {/* Peta interaktif: tambahkan komponen peta di sini
+                                                setelah disaster-map.tsx dibahas. */}
+                                        </Card>
+                                    </Reveal>
 
-                                            <p className="mt-1 font-mono text-sm text-slate-700">
-                                                {report.location?.lng ?? '-'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                                    <Reveal delay={240}>
+                                        <Card title="Riwayat perkembangan">
+                                            {report.updates.length === 0 ? (
+                                                <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                                                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-navy-500" />
+                                                    Belum ada pembaruan untuk
+                                                    laporan ini.
+                                                </p>
+                                            ) : (
+                                                <ol className="relative space-y-6 border-l-2 border-navy-100 pl-6 dark:border-navy-500/20">
+                                                    {report.updates.map(
+                                                        (update, index) => (
+                                                            <li
+                                                                key={update.id}
+                                                                className="relative"
+                                                            >
+                                                                <span
+                                                                    className={`absolute top-1 -left-[33px] h-3 w-3 rounded-full ring-4 ring-card ${
+                                                                        index ===
+                                                                        0
+                                                                            ? 'animate-pulse-ring bg-forest-500'
+                                                                            : 'bg-navy-500'
+                                                                    }`}
+                                                                    aria-hidden="true"
+                                                                />
 
-                                {/* Placeholder map */}
-                                <div className="mt-4 flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50">
-                                    <div className="text-center">
-                                        <div className="mb-2 text-3xl">📍</div>
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="text-sm font-semibold text-foreground">
+                                                                        {
+                                                                            statusMeta(
+                                                                                update.status,
+                                                                            )
+                                                                                .label
+                                                                        }
+                                                                    </span>
+                                                                    <time
+                                                                        dateTime={
+                                                                            update.created_at ??
+                                                                            undefined
+                                                                        }
+                                                                        className="text-xs text-muted-foreground"
+                                                                    >
+                                                                        {formatDateTime(
+                                                                            update.created_at,
+                                                                        )}
+                                                                    </time>
+                                                                </div>
 
-                                        <p className="text-sm font-medium text-slate-700">
-                                            Lokasi Kejadian
-                                        </p>
-
-                                        <p className="mt-1 text-xs text-slate-400">
-                                            Peta dapat diintegrasikan dengan
-                                            Leaflet pada tahap berikutnya.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                                                                {update.note && (
+                                                                    <p className="mt-1 text-sm leading-6 whitespace-pre-line text-muted-foreground">
+                                                                        {
+                                                                            update.note
+                                                                        }
+                                                                    </p>
+                                                                )}
+                                                            </li>
+                                                        ),
+                                                    )}
+                                                </ol>
+                                            )}
+                                        </Card>
+                                    </Reveal>
+                                </>
+                            )}
                         </div>
 
                         {/* Sidebar */}
                         <div className="space-y-6">
+                            {loading ? (
+                                <CardSkeleton lines={6} />
+                            ) : (
+                                <>
+                                    <Reveal delay={120}>
+                                        <Card title="Detail laporan">
+                                            <dl className="space-y-5">
+                                                <Detail label="Jenis kejadian">
+                                                    <span className="flex items-center gap-2">
+                                                        <span
+                                                            className="h-3 w-3 rounded-full shadow-sm"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    typeColor,
+                                                            }}
+                                                        />
+                                                        {report.type?.name ??
+                                                            '-'}
+                                                    </span>
+                                                </Detail>
 
-                            {/* Detail */}
-                            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                                <h2 className="mb-5 text-lg font-semibold text-slate-900">
-                                    Detail Laporan
-                                </h2>
+                                                <Detail label="Wilayah">
+                                                    {report.area ? (
+                                                        <>
+                                                            {report.area.name}
+                                                            {report.area
+                                                                .parent && (
+                                                                <span className="block text-xs text-muted-foreground">
+                                                                    {
+                                                                        report
+                                                                            .area
+                                                                            .parent
+                                                                    }
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        '-'
+                                                    )}
+                                                </Detail>
 
-                                <div className="space-y-5">
+                                                <Detail label="Status">
+                                                    <StatusBadge
+                                                        status={report.status}
+                                                    />
+                                                </Detail>
 
-                                    <div>
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                            Jenis Kejadian
-                                        </p>
+                                                <Detail label="Tingkat keparahan">
+                                                    <SeverityBadge
+                                                        severity={
+                                                            report.severity
+                                                        }
+                                                    />
+                                                </Detail>
 
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span
-                                                className="h-3 w-3 rounded-full"
-                                                style={{
-                                                    backgroundColor:
-                                                        report.type?.color ??
-                                                        '#64748b',
-                                                }}
-                                            />
+                                                <Detail label="Waktu kejadian">
+                                                    {formatDateTime(
+                                                        report.occurred_at,
+                                                    )}
+                                                </Detail>
 
-                                            <span className="text-sm font-medium text-slate-700">
-                                                {report.type?.name ?? '-'}
-                                            </span>
-                                        </div>
-                                    </div>
+                                                <Detail label="Dilaporkan">
+                                                    {formatDateTime(
+                                                        report.created_at,
+                                                    )}
+                                                </Detail>
+                                            </dl>
+                                        </Card>
+                                    </Reveal>
 
-                                    <div>
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                            Wilayah
-                                        </p>
-
-                                        <p className="mt-1 text-sm font-medium text-slate-700">
-                                            {report.area?.name ?? '-'}
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                            Status
-                                        </p>
-
-                                        <span
-                                            className={`mt-2 inline-flex rounded-lg px-3 py-1.5 text-xs font-semibold ${status.className}`}
+                                    <Reveal delay={200}>
+                                        <Link
+                                            href="/laporan"
+                                            className="group flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:shadow-md dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10"
                                         >
-                                            {status.label}
-                                        </span>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                            Tingkat Keparahan
-                                        </p>
-
-                                        <span
-                                            className={`mt-2 inline-flex rounded-lg px-3 py-1.5 text-xs font-semibold ${severity.className}`}
-                                        >
-                                            {severity.label}
-                                        </span>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                            Waktu Kejadian
-                                        </p>
-
-                                        <p className="mt-1 text-sm text-slate-700">
-                                            {formatDate(report.occurred_at)}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Navigation */}
-                            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                                <Link
-                                    href="/laporan"
-                                    className="flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                >
-                                    ← Kembali ke Laporan
-                                </Link>
-                            </div>
+                                            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                                            Kembali ke daftar laporan
+                                        </Link>
+                                    </Reveal>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
         </>
+    );
+}
+
+function Card({
+    title,
+    action,
+    children,
+}: {
+    title: string;
+    action?: ReactNode;
+    children: ReactNode;
+}) {
+    return (
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm transition-shadow duration-300 hover:shadow-md">
+            <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <span className="h-6 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
+                    <h2 className="text-lg font-semibold text-foreground">
+                        {title}
+                    </h2>
+                </div>
+                {action}
+            </div>
+
+            {children}
+        </section>
+    );
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <div>
+            <dt className="text-xs font-medium text-muted-foreground">
+                {label}
+            </dt>
+            <dd className="mt-1.5 text-sm font-medium text-foreground">
+                {children}
+            </dd>
+        </div>
+    );
+}
+
+function Banner({
+    tone,
+    icon,
+    title,
+    children,
+}: {
+    tone: 'sun' | 'red';
+    icon: ReactNode;
+    title: string;
+    children: ReactNode;
+}) {
+    const styles =
+        tone === 'sun'
+            ? 'border-sun-300/60 bg-sun-50 text-sun-600 dark:border-sun-500/20 dark:bg-sun-500/10 dark:text-sun-300'
+            : 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300';
+
+    return (
+        <div
+            className={`mb-6 flex animate-fade-in-up gap-3 rounded-2xl border p-4 ${styles}`}
+        >
+            <span className="mt-0.5 shrink-0">{icon}</span>
+
+            <div>
+                <h2 className="font-semibold">{title}</h2>
+                <p className="mt-1 text-sm leading-6">{children}</p>
+            </div>
+        </div>
     );
 }

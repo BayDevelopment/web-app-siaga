@@ -2,13 +2,15 @@ import 'leaflet/dist/leaflet.css';
 
 import type { GeoJsonObject } from 'geojson';
 import {
-    CircleMarker,
     GeoJSON,
     MapContainer,
     Popup,
     TileLayer,
     ZoomControl,
+    CircleMarker,
 } from 'react-leaflet';
+
+import ReportMarker from '@/components/map/report-marker';
 
 export type MapType = {
     id: number;
@@ -33,7 +35,7 @@ export type MapReport = {
 
 export type MapZone = {
     id: number;
-    disaster_type_id: number;
+    disaster_type_id: number | null;
     name: string;
     level: string;
     description: string | null;
@@ -55,25 +57,6 @@ export type MapBoundary = {
     coordinates: number[][][];
 };
 
-const SEVERITY_LABEL: Record<string, string> = {
-    low: 'Ringan',
-    medium: 'Sedang',
-    high: 'Berat',
-    critical: 'Kritis',
-};
-
-const SEVERITY_RADIUS: Record<string, number> = {
-    low: 8,
-    medium: 10,
-    high: 12,
-    critical: 14,
-};
-
-const STATUS_LABEL: Record<string, string> = {
-    verified: 'Terverifikasi',
-    handling: 'Sedang ditangani',
-};
-
 const FACILITY_LABEL: Record<string, string> = {
     evacuation_point: 'Titik kumpul',
     posko: 'Posko',
@@ -90,13 +73,30 @@ const ZONE_LEVEL_LABEL: Record<string, string> = {
 
 const FALLBACK_COLOR = '#64748b';
 
-function formatTime(iso: string | null): string {
-    if (!iso) return '-';
+/** geojson bisa datang sebagai string (jika model belum di-cast array) atau null */
+function toGeoJson(value: unknown): GeoJsonObject | null {
+    if (!value) {
+        return null;
+    }
 
-    return new Date(iso).toLocaleString('id-ID', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    });
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value) as GeoJsonObject;
+        } catch {
+            return null;
+        }
+    }
+
+    return value as GeoJsonObject;
+}
+
+/** koordinat kosong di database menjadi 0 setelah (float) null */
+function hasValidCoords(lat: number, lng: number): boolean {
+    return (
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        !(lat === 0 && lng === 0)
+    );
 }
 
 type Props = {
@@ -182,18 +182,29 @@ export default function DisasterMap({
             ========================== */}
             {showZones &&
                 zones
-                    .filter((z) =>
-                        activeTypeIds.includes(z.disaster_type_id),
+                    .filter(
+                        (z) =>
+                            z.disaster_type_id == null ||
+                            activeTypeIds.includes(z.disaster_type_id),
                     )
                     .map((z) => {
-                        const color =
-                            typeById.get(z.disaster_type_id)?.color ??
-                            FALLBACK_COLOR;
+                        const data = toGeoJson(z.geojson);
+
+                        if (!data) {
+                            return null;
+                        }
+
+                        const zoneType =
+                            z.disaster_type_id != null
+                                ? typeById.get(z.disaster_type_id)
+                                : undefined;
+
+                        const color = zoneType?.color ?? FALLBACK_COLOR;
 
                         return (
                             <GeoJSON
                                 key={`zone-${z.id}`}
-                                data={z.geojson}
+                                data={data}
                                 style={{
                                     color,
                                     weight: 2,
@@ -209,11 +220,7 @@ export default function DisasterMap({
                                         </p>
 
                                         <p className="text-xs">
-                                            {
-                                                typeById.get(
-                                                    z.disaster_type_id,
-                                                )?.name
-                                            }{' '}
+                                            {zoneType?.name ?? 'Zona'}{' '}
                                             -{' '}
                                             {ZONE_LEVEL_LABEL[z.level] ??
                                                 z.level}
@@ -229,10 +236,12 @@ export default function DisasterMap({
                     })}
 
             {/* =========================
-                FASILITAS
+                FASILITAS DARURAT
             ========================== */}
             {showFacilities &&
-                facilities.map((f) => (
+                facilities
+                    .filter((f) => hasValidCoords(f.lat, f.lng))
+                    .map((f) => (
                     <CircleMarker
                         key={`fac-${f.id}`}
                         center={[f.lat, f.lng]}
@@ -267,69 +276,22 @@ export default function DisasterMap({
                             </div>
                         </Popup>
                     </CircleMarker>
-                ))}
+                    ))}
 
             {/* =========================
                 LAPORAN KEJADIAN
             ========================== */}
             {reports
-                .filter((r) =>
-                    activeTypeIds.includes(r.type_id),
+                .filter((report) =>
+                    activeTypeIds.includes(report.type_id),
                 )
-                .map((r) => {
-                    const type = typeById.get(r.type_id);
-                    const color =
-                        type?.color ?? FALLBACK_COLOR;
-
-                    return (
-                        <CircleMarker
-                            key={`rep-${r.id}`}
-                            center={[r.lat, r.lng]}
-                            radius={
-                                SEVERITY_RADIUS[r.severity] ?? 10
-                            }
-                            pathOptions={{
-                                color: '#ffffff',
-                                weight: 2,
-                                fillColor: color,
-                                fillOpacity: 0.9,
-                            }}
-                        >
-                            <Popup>
-                                <div className="min-w-48 space-y-1 text-sm text-neutral-900">
-                                    <p className="font-semibold">
-                                        {r.title}
-                                    </p>
-
-                                    <p className="text-xs">
-                                        {type?.name} -{' '}
-                                        {SEVERITY_LABEL[r.severity]}
-                                    </p>
-
-                                    <p className="text-xs">
-                                        {STATUS_LABEL[r.status] ??
-                                            r.status}
-                                    </p>
-
-                                    {r.description && (
-                                        <p>{r.description}</p>
-                                    )}
-
-                                    {r.address && (
-                                        <p className="text-xs">
-                                            {r.address}
-                                        </p>
-                                    )}
-
-                                    <p className="text-xs text-neutral-600">
-                                        {formatTime(r.occurred_at)} -{' '}
-                                        {r.code}
-                                    </p>
-                                </div>
-                            </Popup>
-                        </CircleMarker>
-                    );
-                })}
+                .map((report) => (
+                    <ReportMarker
+                        key={`report-${report.id}`}
+                        report={report}
+                        type={typeById.get(report.type_id)}
+                    />
+                ))}
         </MapContainer>
     );
 }

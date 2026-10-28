@@ -2,267 +2,157 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreReportRequest;
+use App\Http\Requests\UpdateReportRequest;
 use App\Models\Area;
 use App\Models\DisasterType;
 use App\Models\Report;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ReportController extends Controller
 {
-    /**
-     * Menampilkan daftar laporan.
-     *
-     * Admin:
-     * - dapat melihat semua laporan.
-     *
-     * User yang login:
-     * - dapat melihat laporan publik.
-     * - dapat melihat laporan miliknya sendiri.
-     *
-     * Guest:
-     * - hanya dapat melihat laporan publik.
-     */
+    private const PER_PAGE = 15;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Index
+    |--------------------------------------------------------------------------
+    | Admin/petugas : semua laporan.
+    | User login    : laporan publik + laporan miliknya.
+    | Guest         : laporan publik saja.
+    | Filter, search, dan statistik dihitung di server.
+    */
     public function index(Request $request): Response
     {
         $user = $request->user();
 
-        $reports = Report::query()
+        $filters = [
+            'search'   => Str::limit(trim((string) $request->query('search', '')), 100, ''),
+            'type'     => (string) $request->query('type', ''),
+            'status'   => $this->allowed($request->query('status'), Report::STATUSES),
+            'severity' => $this->allowed($request->query('severity'), Report::SEVERITIES),
+            'mine'     => $user && $request->boolean('mine'),
+        ];
+
+        $visible = $this->visibleTo($user);
+
+        $reports = (clone $visible)
             ->with([
                 'disasterType:id,name,slug,color',
                 'area:id,name,slug',
             ])
-            ->when(
-                $user?->role !== 'admin',
-                function ($query) use ($user) {
-                    $query->where(function ($q) use ($user) {
-                        $q->publicActive();
+            ->when($filters['search'] !== '', function (Builder $q) use ($filters) {
+                $term = '%' . $filters['search'] . '%';
 
-                        if ($user) {
-                            $q->orWhere('user_id', $user->id);
-                        }
-                    });
-                }
-            )
-            ->select([
-                'id',
-                'code',
-                'user_id',
-                'area_id',
-                'disaster_type_id',
-                'title',
-                'description',
-                'latitude',
-                'longitude',
-                'address',
-                'severity',
-                'status',
-                'occurred_at',
-            ])
+                $q->where(fn(Builder $w) => $w
+                    ->where('title', 'like', $term)
+                    ->orWhere('code', 'like', $term)
+                    ->orWhere('address', 'like', $term));
+            })
+            ->when($filters['type'] !== '', fn(Builder $q) => $q
+                ->whereHas('disasterType', fn(Builder $d) => $d->where('slug', $filters['type'])))
+            ->when($filters['status'] !== '', fn(Builder $q) => $q->where('status', $filters['status']))
+            ->when($filters['severity'] !== '', fn(Builder $q) => $q->where('severity', $filters['severity']))
+            ->when($filters['mine'], fn(Builder $q) => $q->where('user_id', $user->id))
             ->latest('occurred_at')
-            ->paginate(15)
-            ->through(fn (Report $report) => [
-                'id' => $report->id,
-                'code' => $report->code,
-                'title' => $report->title,
-
-                'description' => Str::limit(
-                    (string) $report->description,
-                    160
-                ),
-
-                'location' => [
-                    'lat' => (float) $report->latitude,
-                    'lng' => (float) $report->longitude,
-                    'address' => $report->address,
-                ],
-
-                'severity' => $report->severity,
-                'status' => $report->status,
-
-                'occurred_at' => $report->occurred_at?->toIso8601String(),
-
-                'type' => $report->disasterType ? [
-                    'id' => $report->disasterType->id,
-                    'name' => $report->disasterType->name,
-                    'slug' => $report->disasterType->slug,
-                    'color' => $report->disasterType->color,
-                ] : null,
-
-                'area' => $report->area ? [
-                    'id' => $report->area->id,
-                    'name' => $report->area->name,
-                    'slug' => $report->area->slug,
-                ] : null,
-            ]);
+            ->latest('id')
+            ->paginate(self::PER_PAGE)
+            ->withQueryString()
+            ->through(fn(Report $report) => $this->summary($report, $user));
 
         return Inertia::render('laporan/index', [
             'reports' => $reports,
+            'filters' => $filters,
 
-            'types' => DisasterType::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'color',
-                ]),
+            // Statistik mengikuti hak akses, bukan hanya halaman yang tampil.
+            'stats' => [
+                'total'    => (clone $visible)->count(),
+                'verified' => (clone $visible)->where('status', Report::STATUS_VERIFIED)->count(),
+                'handling' => (clone $visible)->where('status', Report::STATUS_HANDLING)->count(),
+            ],
+
+            'types' => $this->activeTypes(),
+
+            'can' => [
+                'create'  => $user !== null,
+                'see_all' => (bool) $user?->isStaff(),
+            ],
         ]);
     }
 
-    /**
-     * Menampilkan form pembuatan laporan.
-     */
     public function create(): Response
     {
-        return Inertia::render('laporan/create', [
-            'types' => DisasterType::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'color',
-                ]),
-
-            'areas' => Area::query()
-                ->active()
-                ->orderBy('name')
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'type',
-                    'parent_id',
-                ]),
-        ]);
+        return Inertia::render('laporan/create', $this->formOptions());
     }
 
-    /**
-     * Menyimpan laporan baru.
-     *
-     * Semua laporan baru berstatus pending.
-     */
-    public function store(Request $request): RedirectResponse
+    /*
+    |--------------------------------------------------------------------------
+    | Store
+    |--------------------------------------------------------------------------
+    | Warga          : status pending, menunggu verifikasi.
+    | Admin/petugas  : langsung verified.
+    | Transaksi dipakai supaya generator kode laporan (lockForUpdate)
+    | benar-benar terkunci sampai insert selesai.
+    */
+    public function store(StoreReportRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'disaster_type_id' => [
-                'required',
-                'integer',
-                'exists:disaster_types,id',
-            ],
+        $user = $request->user();
+        $data = $request->validated();
+        $autoVerify = $user->isStaff();
 
-            'area_id' => [
-                'required',
-                'integer',
-                'exists:areas,id',
-            ],
+        $report = DB::transaction(function () use ($request, $data, $user, $autoVerify) {
+            $report = Report::create([
+                'user_id'          => $user->id,
+                'reporter_name'    => $user->name,
+                'area_id'          => $data['area_id'],
+                'disaster_type_id' => $data['disaster_type_id'],
+                'title'            => $data['title'],
+                'description'      => $data['description'] ?? null,
+                'latitude'         => $data['latitude'],
+                'longitude'        => $data['longitude'],
+                'address'          => $data['address'] ?? null,
+                'severity'         => $data['severity'],
+                'occurred_at'      => $data['occurred_at'],
 
-            'title' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+                'status'      => $autoVerify ? Report::STATUS_VERIFIED : Report::STATUS_PENDING,
+                'verified_by' => $autoVerify ? $user->id : null,
+                'verified_at' => $autoVerify ? now() : null,
+            ]);
 
-            'description' => [
-                'nullable',
-                'string',
-                'max:5000',
-            ],
+            $this->storePhotos($report, $request->file('photos', []));
 
-            'latitude' => [
-                'required',
-                'numeric',
-                'between:-90,90',
-            ],
-
-            'longitude' => [
-                'required',
-                'numeric',
-                'between:-180,180',
-            ],
-
-            'address' => [
-                'nullable',
-                'string',
-                'max:1000',
-            ],
-
-            'severity' => [
-                'required',
-                'in:low,medium,high,critical',
-            ],
-
-            'occurred_at' => [
-                'required',
-                'date',
-            ],
-        ]);
-
-        $report = Report::create([
-            'user_id' => $request->user()->id,
-            'area_id' => $validated['area_id'],
-            'disaster_type_id' => $validated['disaster_type_id'],
-
-            'title' => $validated['title'],
-            'description' => $validated['description'] ?? null,
-
-            'latitude' => $validated['latitude'],
-            'longitude' => $validated['longitude'],
-            'address' => $validated['address'] ?? null,
-
-            'severity' => $validated['severity'],
-
-            // Semua laporan baru harus menunggu verifikasi.
-            'status' => Report::STATUS_PENDING,
-
-            'occurred_at' => $validated['occurred_at'],
-        ]);
+            return $report;
+        });
 
         return redirect()
             ->route('laporan.show', $report)
-            ->with(
-                'success',
-                'Laporan berhasil dikirim dan menunggu verifikasi.'
-            );
+            ->with('success', $autoVerify
+                ? 'Laporan berhasil dibuat dan langsung terverifikasi.'
+                : 'Laporan berhasil dikirim dan menunggu verifikasi.');
     }
 
-    /**
-     * Menampilkan detail laporan.
-     *
-     * Admin:
-     * - dapat melihat semua laporan.
-     *
-     * Pemilik:
-     * - dapat melihat laporan miliknya sendiri,
-     *   termasuk yang masih pending.
-     *
-     * User lain / guest:
-     * - hanya dapat melihat laporan publicActive().
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Show
+    |--------------------------------------------------------------------------
+    | Laporan yang tidak boleh dilihat dijawab 404 (bukan 403)
+    | supaya keberadaannya tidak bocor.
+    */
     public function show(Request $request, Report $report): Response
     {
+        abort_unless(Gate::allows('view', $report), 404);
+
         $user = $request->user();
-
-        $isAdmin = $user?->role === 'admin';
-
-        $isOwner = $user
-            && $report->user_id === $user->id;
-
-        $isPublic = Report::query()
-            ->whereKey($report->id)
-            ->publicActive()
-            ->exists();
-
-        abort_unless(
-            $isAdmin || $isOwner || $isPublic,
-            404
-        );
+        $isStaff = (bool) $user?->isStaff();
 
         $report->load([
             'disasterType:id,name,slug,color',
@@ -272,244 +162,269 @@ class ReportController extends Controller
             'updates',
         ]);
 
+        // Catatan internal hanya untuk admin/petugas.
+        $updates = $report->updates
+            ->when(! $isStaff, fn($c) => $c->where('is_public', true))
+            ->values();
+
         return Inertia::render('laporan/show', [
             'report' => [
-                'id' => $report->id,
+                'id'   => $report->id,
                 'code' => $report->code,
 
-                'title' => $report->title,
+                'title'       => $report->title,
                 'description' => $report->description,
 
                 'location' => [
-                    'lat' => (float) $report->latitude,
-                    'lng' => (float) $report->longitude,
+                    'lat'     => (float) $report->latitude,
+                    'lng'     => (float) $report->longitude,
                     'address' => $report->address,
                 ],
 
                 'severity' => $report->severity,
-                'status' => $report->status,
+                'status'   => $report->status,
 
-                'occurred_at' =>
-                    $report->occurred_at?->toIso8601String(),
+                'occurred_at' => $report->occurred_at?->toIso8601String(),
+                'created_at'  => $report->created_at?->toIso8601String(),
 
-                'type' => $report->disasterType ? [
-                    'id' => $report->disasterType->id,
-                    'name' => $report->disasterType->name,
-                    'slug' => $report->disasterType->slug,
-                    'color' => $report->disasterType->color,
-                ] : null,
+                'type' => $this->typePayload($report),
 
                 'area' => $report->area ? [
-                    'id' => $report->area->id,
-                    'name' => $report->area->name,
-                    'slug' => $report->area->slug,
+                    'id'     => $report->area->id,
+                    'name'   => $report->area->name,
+                    'slug'   => $report->area->slug,
                     'parent' => $report->area->parent?->name,
                 ] : null,
 
-                'photos' => $report->photos
-                    ->map(fn ($photo) => [
-                        'id' => $photo->id,
-                        'path' => $photo->path,
-                        'caption' => $photo->caption,
-                    ])
-                    ->values(),
+                'photos' => $report->photos->map(fn($photo) => [
+                    'id'      => $photo->id,
+                    'url'     => $photo->url,
+                    'caption' => $photo->caption,
+                ])->values(),
 
-                'updates' => $report->updates
-                    ->sortByDesc('created_at')
-                    ->values()
-                    ->map(fn ($update) => [
-                        'id' => $update->id,
-                        'status' => $update->status,
-                        'note' => $update->note,
-                        'created_at' =>
-                            $update->created_at?->toIso8601String(),
-                    ]),
+                'updates' => $updates->map(fn($update) => [
+                    'id'         => $update->id,
+                    'status'     => $update->status,
+                    'note'       => $update->note,
+                    'created_at' => $update->created_at?->toIso8601String(),
+                ])->values(),
+            ],
+
+            'is_owner' => $user !== null && $report->user_id === $user->id,
+
+            'can' => [
+                'update' => Gate::allows('update', $report),
+                'delete' => Gate::allows('delete', $report),
             ],
         ]);
     }
 
-    /**
-     * Menampilkan form edit laporan.
-     *
-     * Admin dapat mengedit semua laporan.
-     * User biasa hanya dapat mengedit laporan miliknya sendiri.
-     */
-    public function edit(Request $request, Report $report): Response
+    public function edit(Report $report): Response
     {
-        $user = $request->user();
+        Gate::authorize('update', $report);
 
-        abort_unless(
-            $user?->role === 'admin'
-            || $report->user_id === $user?->id,
-            403
-        );
+        $report->load('photos');
 
         return Inertia::render('laporan/edit', [
             'report' => [
-                'id' => $report->id,
+                'id'   => $report->id,
                 'code' => $report->code,
 
                 'disaster_type_id' => $report->disaster_type_id,
-                'area_id' => $report->area_id,
+                'area_id'          => $report->area_id,
 
-                'title' => $report->title,
+                'title'       => $report->title,
                 'description' => $report->description,
 
-                'latitude' => (float) $report->latitude,
+                'latitude'  => (float) $report->latitude,
                 'longitude' => (float) $report->longitude,
-                'address' => $report->address,
+                'address'   => $report->address,
 
                 'severity' => $report->severity,
-                'status' => $report->status,
+                'status'   => $report->status,
 
-                'occurred_at' =>
-                    $report->occurred_at?->toIso8601String(),
+                // Format langsung cocok untuk <input type="datetime-local">
+                // (zona waktu mengikuti config('app.timezone')).
+                'occurred_at' => $report->occurred_at?->format('Y-m-d\TH:i'),
+
+                'photos' => $report->photos->map(fn($photo) => [
+                    'id'      => $photo->id,
+                    'url'     => $photo->url,
+                    'caption' => $photo->caption,
+                ])->values(),
             ],
 
-            'types' => DisasterType::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'color',
-                ]),
-
-            'areas' => Area::query()
-                ->active()
-                ->orderBy('name')
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'type',
-                    'parent_id',
-                ]),
+            ...$this->formOptions(),
         ]);
     }
 
-    /**
-     * Memperbarui laporan.
-     *
-     * Status tidak diubah melalui form edit.
-     * Perubahan status akan dilakukan melalui proses
-     * verifikasi khusus admin.
-     */
-    public function update(
-        Request $request,
-        Report $report
-    ): RedirectResponse {
-        $user = $request->user();
+    /*
+    |--------------------------------------------------------------------------
+    | Update
+    |--------------------------------------------------------------------------
+    | Otorisasi ada di UpdateReportRequest (ReportPolicy@update).
+    | Status tidak diubah di sini; perubahan status lewat alur verifikasi
+    | (Admin/ReportController). Warga hanya bisa mengedit saat pending,
+    | sehingga isi laporan terverifikasi tidak bisa diubah diam-diam.
+    */
+    public function update(UpdateReportRequest $request, Report $report): RedirectResponse
+    {
+        $data = $request->validated();
 
-        abort_unless(
-            $user?->role === 'admin'
-            || $report->user_id === $user?->id,
-            403
-        );
+        DB::transaction(function () use ($request, $report, $data) {
+            $report->update([
+                'area_id'          => $data['area_id'],
+                'disaster_type_id' => $data['disaster_type_id'],
+                'title'            => $data['title'],
+                'description'      => $data['description'] ?? null,
+                'latitude'         => $data['latitude'],
+                'longitude'        => $data['longitude'],
+                'address'          => $data['address'] ?? null,
+                'severity'         => $data['severity'],
+                'occurred_at'      => $data['occurred_at'],
+            ]);
 
-        $validated = $request->validate([
-            'disaster_type_id' => [
-                'required',
-                'integer',
-                'exists:disaster_types,id',
-            ],
-
-            'area_id' => [
-                'required',
-                'integer',
-                'exists:areas,id',
-            ],
-
-            'title' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-
-            'description' => [
-                'nullable',
-                'string',
-                'max:5000',
-            ],
-
-            'latitude' => [
-                'required',
-                'numeric',
-                'between:-90,90',
-            ],
-
-            'longitude' => [
-                'required',
-                'numeric',
-                'between:-180,180',
-            ],
-
-            'address' => [
-                'nullable',
-                'string',
-                'max:1000',
-            ],
-
-            'severity' => [
-                'required',
-                'in:low,medium,high,critical',
-            ],
-
-            'occurred_at' => [
-                'required',
-                'date',
-            ],
-        ]);
-
-        $report->update([
-            'area_id' => $validated['area_id'],
-            'disaster_type_id' => $validated['disaster_type_id'],
-
-            'title' => $validated['title'],
-            'description' => $validated['description'] ?? null,
-
-            'latitude' => $validated['latitude'],
-            'longitude' => $validated['longitude'],
-            'address' => $validated['address'] ?? null,
-
-            'severity' => $validated['severity'],
-            'occurred_at' => $validated['occurred_at'],
-        ]);
+            $this->deletePhotos($report, $data['delete_photo_ids'] ?? []);
+            $this->storePhotos($report, $request->file('photos', []));
+        });
 
         return redirect()
             ->route('laporan.show', $report)
-            ->with(
-                'success',
-                'Laporan berhasil diperbarui.'
-            );
+            ->with('success', 'Laporan berhasil diperbarui.');
     }
 
-    /**
-     * Menghapus laporan.
-     *
-     * Admin dapat menghapus semua laporan.
-     * User biasa hanya dapat menghapus laporan miliknya sendiri.
-     */
-    public function destroy(
-        Request $request,
-        Report $report
-    ): RedirectResponse {
-        $user = $request->user();
-
-        abort_unless(
-            $user?->role === 'admin'
-            || $report->user_id === $user?->id,
-            403
-        );
+    /*
+    | Soft delete. File foto dipertahankan supaya laporan bisa dipulihkan.
+    */
+    public function destroy(Report $report): RedirectResponse
+    {
+        Gate::authorize('delete', $report);
 
         $report->delete();
 
         return redirect()
             ->route('laporan.index')
-            ->with(
-                'success',
-                'Laporan berhasil dihapus.'
-            );
+            ->with('success', 'Laporan berhasil dihapus.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    /** Query dasar: laporan yang boleh dilihat user ini. */
+    private function visibleTo(?User $user): Builder
+    {
+        return Report::query()->when(
+            ! $user?->isStaff(),
+            fn(Builder $query) => $query->where(function (Builder $q) use ($user) {
+                $q->publicActive();
+
+                if ($user) {
+                    $q->orWhere('user_id', $user->id);
+                }
+            })
+        );
+    }
+
+    private function summary(Report $report, ?User $user): array
+    {
+        return [
+            'id'    => $report->id,
+            'code'  => $report->code,
+            'title' => $report->title,
+
+            'description' => Str::limit((string) $report->description, 160),
+
+            'location' => [
+                'lat'     => (float) $report->latitude,
+                'lng'     => (float) $report->longitude,
+                'address' => $report->address,
+            ],
+
+            'severity'    => $report->severity,
+            'status'      => $report->status,
+            'occurred_at' => $report->occurred_at?->toIso8601String(),
+
+            'is_mine' => $user !== null && $report->user_id === $user->id,
+
+            'type' => $this->typePayload($report),
+
+            'area' => $report->area ? [
+                'id'   => $report->area->id,
+                'name' => $report->area->name,
+                'slug' => $report->area->slug,
+            ] : null,
+        ];
+    }
+
+    private function typePayload(Report $report): ?array
+    {
+        return $report->disasterType ? [
+            'id'    => $report->disasterType->id,
+            'name'  => $report->disasterType->name,
+            'slug'  => $report->disasterType->slug,
+            'color' => $report->disasterType->color,
+        ] : null;
+    }
+
+    private function activeTypes()
+    {
+        return DisasterType::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'color']);
+    }
+
+    /** Opsi dropdown untuk form create/edit. */
+    private function formOptions(): array
+    {
+        return [
+            'types' => $this->activeTypes(),
+
+            'areas' => Area::query()
+                ->active()
+                ->with('parent:id,name')
+                ->orderBy('name')
+                ->get(['id', 'name', 'slug', 'type', 'parent_id'])
+                ->map(fn(Area $area) => [
+                    'id'          => $area->id,
+                    'name'        => $area->name,
+                    'slug'        => $area->slug,
+                    'type'        => $area->type,
+                    'parent_id'   => $area->parent_id,
+                    'parent_name' => $area->parent?->name,
+                ])
+                ->values(),
+        ];
+    }
+
+    /** @param  array<int, \Illuminate\Http\UploadedFile>  $files */
+    private function storePhotos(Report $report, array $files): void
+    {
+        foreach ($files as $file) {
+            $report->photos()->create([
+                'path' => $file->store("reports/{$report->id}", 'public'),
+            ]);
+        }
+    }
+
+    /** @param  array<int, int|string>  $ids */
+    private function deletePhotos(Report $report, array $ids): void
+    {
+        if ($ids === []) {
+            return;
+        }
+
+        $report->photos()->whereIn('id', $ids)->get()->each(function ($photo) {
+            Storage::disk('public')->delete($photo->path);
+            $photo->delete();
+        });
+    }
+
+    private function allowed(mixed $value, array $allowed): string
+    {
+        return is_string($value) && in_array($value, $allowed, true) ? $value : '';
     }
 }

@@ -5,6 +5,7 @@ import {
     LayoutGrid,
     Map,
     MapPin,
+    Tags,
     TriangleAlert,
 } from 'lucide-react';
 
@@ -50,6 +51,11 @@ const adminNavItems: NavItem[] = [
         icon: MapPin,
     },
     {
+        title: 'Jenis Bencana',
+        href: '/admin/disaster-types',
+        icon: Tags,
+    },
+    {
         title: 'Zona Rawan',
         href: '/admin/hazard-zones',
         icon: TriangleAlert,
@@ -70,9 +76,7 @@ export function AppSidebar() {
         };
     }>().props;
 
-    const role = auth?.user?.role;
-
-    const isAdmin = role === 'admin';
+    const isAdmin = auth?.user?.role === 'admin';
 
     const mainNavItems = isAdmin
         ? [...baseNavItems, ...adminNavItems]
@@ -84,10 +88,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link
-                                href={dashboard()}
-                                prefetch
-                            >
+                            <Link href={dashboard()} prefetch>
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

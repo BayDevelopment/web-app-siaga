@@ -27,7 +27,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->decimal('latitude', 10, 7);
             $table->decimal('longitude', 10, 7);
-            $table->string('address')->nullable();
+            $table->text('address')->nullable();
 
             $table->string('severity', 20)->default('low');    // low | medium | high | critical
             $table->string('status', 20)->default('pending');  // pending | verified | handling | resolved | rejected
@@ -40,6 +40,7 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->index(['status', 'disaster_type_id']);
+            $table->index(['status', 'occurred_at']);
             $table->index(['latitude', 'longitude']);
             $table->index('occurred_at');
         });
@@ -50,8 +51,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('sessions');
-        Schema::dropIfExists('password_reset_tokens');
-        Schema::dropIfExists('users');
+        Schema::dropIfExists('reports');
     }
 };

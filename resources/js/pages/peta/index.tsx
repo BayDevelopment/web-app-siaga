@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router } from "@inertiajs/react";
 import {
     AlertTriangle,
     BarChart3,
@@ -13,8 +13,15 @@ import {
     Siren,
     TreePine,
     Waves,
-} from 'lucide-react';
-import { useMemo, useState } from 'react';
+} from "lucide-react";
+import {
+    useEffect,
+    useMemo,
+    useState,
+    type CSSProperties,
+    type ElementType,
+    type ReactNode,
+} from "react";
 
 import DisasterMap, {
     type MapBoundary,
@@ -22,9 +29,10 @@ import DisasterMap, {
     type MapReport,
     type MapType,
     type MapZone,
-} from '@/components/map/disaster-map';
+} from "@/components/map/disaster-map";
 
-type Role = 'admin' | 'petugas' | 'warga';
+type Role = "admin" | "petugas" | "warga";
+type Tone = "navy" | "sea" | "forest" | "sun" | "danger";
 
 type User = {
     id: number;
@@ -81,7 +89,6 @@ type Props = {
     };
 
     area: Area | null;
-
     areas: AreaOption[];
 
     boundary: MapBoundary | null;
@@ -101,17 +108,17 @@ type Props = {
 };
 
 const SEVERITY_LABEL: Record<string, string> = {
-    low: 'Ringan',
-    medium: 'Sedang',
-    high: 'Berat',
-    critical: 'Kritis',
+    low: "Ringan",
+    medium: "Sedang",
+    high: "Berat",
+    critical: "Kritis",
 };
 
 const SEVERITY_CLASS: Record<string, string> = {
-    low: 'bg-emerald-50 text-emerald-700',
-    medium: 'bg-yellow-50 text-yellow-700',
-    high: 'bg-orange-50 text-orange-700',
-    critical: 'bg-red-50 text-red-700',
+    low: "bg-forest-100 text-forest-800 dark:bg-forest-500/15 dark:text-forest-400",
+    medium: "bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300",
+    high: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+    critical: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300",
 };
 
 const TYPE_ICON = {
@@ -119,29 +126,116 @@ const TYPE_ICON = {
     kebakaran: Flame,
     karhutla: Flame,
     longsor: Mountain,
-    'pohon-tumbang': TreePine,
+    "pohon-tumbang": TreePine,
 };
+
+/* Warna ikon mengikuti palet logo */
+const toneClass: Record<Tone, string> = {
+    navy: "bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400",
+    sea: "bg-sea-300/30 text-sea-500 dark:bg-sea-500/15 dark:text-sea-300",
+    forest: "bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-400",
+    sun: "bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300",
+    danger: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
+};
+
+/* ---------- Helper animasi & skeleton ---------- */
+
+function Reveal({
+    children,
+    delay = 0,
+    className = "",
+    fill = true,
+    plain = false,
+}: {
+    children: ReactNode;
+    delay?: number;
+    className?: string;
+    /** true = tinggi penuh (untuk kartu dalam grid) */
+    fill?: boolean;
+    /** true = hanya fade (tanpa translate), aman untuk peta Leaflet */
+    plain?: boolean;
+}) {
+    return (
+        <div
+            className={`${fill ? "h-full" : ""} ${plain ? "animate-fade-in" : "animate-fade-in-up"} ${className}`}
+            style={{ animationDelay: `${delay}ms` } as CSSProperties}
+        >
+            {children}
+        </div>
+    );
+}
+
+function useFakeLoading(ms = 700) {
+    // Ganti dengan state asli bila perlu (mis. router.on('start' / 'finish'))
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const t = setTimeout(() => setLoading(false), ms);
+        return () => clearTimeout(t);
+    }, [ms]);
+
+    return loading;
+}
+
+function StatCardSkeleton() {
+    return (
+        <div className="h-full rounded-2xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 space-y-3">
+                    <div className="skeleton h-3.5 w-24" />
+                    <div className="skeleton h-8 w-14" />
+                    <div className="skeleton h-3 w-28" />
+                </div>
+                <div className="skeleton size-10 rounded-xl" />
+            </div>
+        </div>
+    );
+}
+
+function ListSkeleton({ rows = 3 }: { rows?: number }) {
+    return (
+        <div className="divide-y divide-border">
+            {Array.from({ length: rows }).map((_, i) => (
+                <div
+                    key={i}
+                    className="flex items-center gap-3 px-4 py-4 md:px-5"
+                >
+                    <div className="skeleton size-10 shrink-0 rounded-xl" />
+                    <div className="flex-1 space-y-2">
+                        <div className="skeleton h-4 w-2/3" />
+                        <div className="skeleton h-3 w-1/2" />
+                    </div>
+                    <div className="skeleton h-6 w-14 rounded-full" />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/* ---------- Komponen UI ---------- */
 
 function StatCard({
     title,
     value,
     description,
     icon: Icon,
+    tone = "navy",
 }: {
     title: string;
     value: number | string;
     description: string;
-    icon: React.ElementType;
+    icon: ElementType;
+    tone?: Tone;
 }) {
     return (
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <div className="group h-full rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40">
             <div className="flex items-start justify-between gap-3">
-                <div>
-                    <p className="text-sm text-muted-foreground">
+                <div className="min-w-0">
+                    <p className="truncate text-sm text-muted-foreground">
                         {title}
                     </p>
 
-                    <p className="mt-1 text-2xl font-bold tracking-tight">
+                    <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
                         {value}
                     </p>
 
@@ -150,13 +244,110 @@ function StatCard({
                     </p>
                 </div>
 
-                <div className="rounded-lg bg-primary/10 p-2.5 text-primary">
+                <div
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${toneClass[tone]}`}
+                >
                     <Icon className="size-5" />
                 </div>
             </div>
         </div>
     );
 }
+
+function PanelHeader({
+    icon: Icon,
+    tone,
+    title,
+    description,
+    action,
+}: {
+    icon: ElementType;
+    tone: Tone;
+    title: string;
+    description: string;
+    action?: ReactNode;
+}) {
+    return (
+        <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+                <div
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${toneClass[tone]}`}
+                >
+                    <Icon className="size-4" />
+                </div>
+
+                <div>
+                    <h2 className="font-semibold text-foreground">{title}</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                        {description}
+                    </p>
+                </div>
+            </div>
+
+            {action}
+        </div>
+    );
+}
+
+function SectionTitle({
+    title,
+    description,
+}: {
+    title: string;
+    description: string;
+}) {
+    return (
+        <div className="mb-3 flex items-start gap-3">
+            <span className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
+            <div>
+                <h2 className="font-semibold text-foreground">{title}</h2>
+                <p className="text-xs text-muted-foreground">{description}</p>
+            </div>
+        </div>
+    );
+}
+
+function LayerToggle({
+    label,
+    hasData,
+    checked,
+    onChange,
+}: {
+    label: string;
+    hasData: boolean;
+    checked: boolean;
+    onChange: (value: boolean) => void;
+}) {
+    return (
+        <label
+            className={`flex items-center justify-between rounded-xl border border-border px-3 py-2.5 transition ${
+                hasData
+                    ? "cursor-pointer hover:bg-muted/50"
+                    : "cursor-not-allowed opacity-60"
+            }`}
+        >
+            <span className="text-sm font-medium">
+                {label}
+                {!hasData && (
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                        Belum ada data
+                    </span>
+                )}
+            </span>
+
+            <input
+                type="checkbox"
+                checked={hasData && checked}
+                disabled={!hasData}
+                onChange={(event) => onChange(event.target.checked)}
+                className="size-4 accent-primary"
+            />
+        </label>
+    );
+}
+
+const adminLinkClass =
+    "group flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:shadow-md dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10";
 
 export default function PetaIndex({
     auth,
@@ -174,21 +365,32 @@ export default function PetaIndex({
     stats,
 }: Props) {
     const role = auth.user.role;
+    const loading = useFakeLoading(700);
 
     const [activeTypeIds, setActiveTypeIds] = useState<number[]>(
         types.map((type) => type.id),
     );
 
-    const [showZones, setShowZones] = useState(true);
-    const [showFacilities, setShowFacilities] = useState(true);
+    const hasZones = zones.length > 0;
+    const hasFacilities = facilities.length > 0;
 
-    const selectedArea = area?.slug ?? '';
+    const [showZones, setShowZones] = useState(hasZones);
+    const [showFacilities, setShowFacilities] = useState(hasFacilities);
+
+    // Sinkronkan saat data berubah (pindah wilayah / reload)
+    useEffect(() => {
+        setShowZones(hasZones);
+    }, [hasZones]);
+
+    useEffect(() => {
+        setShowFacilities(hasFacilities);
+    }, [hasFacilities]);
+
+    const selectedArea = area?.slug ?? "";
 
     const visibleReports = useMemo(
         () =>
-            reports.filter((report) =>
-                activeTypeIds.includes(report.type_id),
-            ),
+            reports.filter((report) => activeTypeIds.includes(report.type_id)),
         [reports, activeTypeIds],
     );
 
@@ -220,543 +422,643 @@ export default function PetaIndex({
 
     const changeArea = (slug: string) => {
         if (!slug) {
-            router.get('/peta');
+            router.get("/peta");
             return;
         }
 
         router.get(`/peta/${slug}`);
     };
 
+    const selectAllTypes = () => {
+        setActiveTypeIds(types.map((type) => type.id));
+    };
+
+    const clearAllTypes = () => {
+        setActiveTypeIds([]);
+    };
+
+    const allTypesActive =
+        types.length > 0 && activeTypeIds.length === types.length;
+
+    /* Statistik per role dalam satu array */
+    const statCards: {
+        title: string;
+        value: number | string;
+        description: string;
+        icon: ElementType;
+        tone: Tone;
+    }[] =
+        role === "admin"
+            ? [
+                  {
+                      title: "Total Laporan",
+                      value: stats.total_reports,
+                      description: "Laporan aktif",
+                      icon: BarChart3,
+                      tone: "navy",
+                  },
+                  {
+                      title: "Terverifikasi",
+                      value: stats.verified_reports,
+                      description: "Sudah diverifikasi",
+                      icon: CheckCircle2,
+                      tone: "sea",
+                  },
+                  {
+                      title: "Sedang Ditangani",
+                      value: stats.handling_reports,
+                      description: "Dalam penanganan",
+                      icon: Siren,
+                      tone: "sun",
+                  },
+                  {
+                      title: "Wilayah",
+                      value: stats.total_areas,
+                      description: "Wilayah aktif",
+                      icon: Building2,
+                      tone: "forest",
+                  },
+              ]
+            : role === "petugas"
+              ? [
+                    {
+                        title: "Kejadian Aktif",
+                        value: stats.active_reports,
+                        description: "Kejadian aktif",
+                        icon: AlertTriangle,
+                        tone: "navy",
+                    },
+                    {
+                        title: "Sedang Ditangani",
+                        value: stats.handling_reports,
+                        description: "Dalam penanganan",
+                        icon: Siren,
+                        tone: "sun",
+                    },
+                    {
+                        title: "Prioritas Tinggi",
+                        value: stats.high_reports,
+                        description: "Severity berat",
+                        icon: ShieldAlert,
+                        tone: "sea",
+                    },
+                    {
+                        title: "Kritis",
+                        value: stats.critical_reports,
+                        description: "Prioritas utama",
+                        icon: CircleAlert,
+                        tone: "danger",
+                    },
+                ]
+              : [
+                    {
+                        title: "Kejadian Aktif",
+                        value: stats.active_reports,
+                        description: "Informasi terkini",
+                        icon: AlertTriangle,
+                        tone: "navy",
+                    },
+                    {
+                        title: "Zona Rawan",
+                        value: zones.length,
+                        description: hasZones
+                            ? "Zona pada peta"
+                            : "Belum ada zona",
+                        icon: ShieldAlert,
+                        tone: "sun",
+                    },
+                    {
+                        title: "Fasilitas",
+                        value: stats.total_facilities,
+                        description:
+                            stats.total_facilities > 0
+                                ? "Fasilitas darurat"
+                                : "Belum ada fasilitas",
+                        icon: Building2,
+                        tone: "forest",
+                    },
+                ];
+
+    const statGridClass =
+        role === "warga"
+            ? "grid gap-3 sm:grid-cols-3"
+            : "grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
+
     return (
         <>
             <Head title="Peta Kejadian" />
 
-            <div className="min-h-screen bg-muted/30">
-                <div className="mx-auto max-w-[1800px] space-y-5 p-4 md:p-6">
-                    {/* HEADER */}
-                    <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-                        <div>
-                            <div className="flex items-center gap-3">
-                                <div className="rounded-lg bg-primary p-2 text-primary-foreground">
-                                    <MapPin className="size-5" />
+            <div className="relative min-h-screen overflow-hidden bg-background">
+                {/* Blob latar halaman */}
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 overflow-hidden"
+                >
+                    <div className="blob -top-24 -left-24 h-80 w-80 animate-blob bg-navy-400/20" />
+                    <div className="blob top-1/3 -right-32 h-96 w-96 animate-blob-slow bg-sun-300/20" />
+                    <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15" />
+                </div>
+
+                <div className="relative mx-auto max-w-[1800px] space-y-6 p-4 md:p-6 lg:p-8">
+                    {/* =====================================================
+                        HEADER
+                    ====================================================== */}
+                    <section className="relative animate-fade-in overflow-hidden rounded-3xl bg-linear-to-br from-navy-950 via-navy-900 to-navy-800 text-white shadow-xl shadow-navy-900/20">
+                        <div className="blob -top-20 -right-16 h-64 w-64 animate-blob bg-sun-400/30" />
+                        <div className="blob -bottom-24 left-1/3 h-64 w-64 animate-blob-slow bg-sea-400/25" />
+                        <div className="blob -bottom-14 -left-10 h-48 w-48 animate-blob bg-forest-500/25" />
+
+                        <div className="relative flex flex-col justify-between gap-5 p-5 md:p-6 lg:flex-row lg:items-center">
+                            <div className="flex items-center gap-4">
+                                <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-sun-400 to-sun-600 text-navy-950 shadow-lg shadow-sun-500/30">
+                                    <MapPin className="size-6" />
                                 </div>
 
                                 <div>
-                                    <h1 className="text-xl font-bold md:text-2xl">
-                                        {role === 'admin'
-                                            ? 'Monitoring Peta Wilayah'
-                                            : role === 'petugas'
-                                              ? 'Monitoring Kejadian'
-                                              : 'Peta Kejadian Sekitar'}
+                                    <h1 className="text-xl font-bold tracking-tight md:text-2xl">
+                                        {role === "admin"
+                                            ? "Monitoring Peta Wilayah"
+                                            : role === "petugas"
+                                              ? "Monitoring Kejadian"
+                                              : "Peta Kejadian Sekitar"}
                                     </h1>
 
-                                    <p className="text-sm text-muted-foreground">
-                                        {role === 'admin'
-                                            ? 'Pantau kejadian, wilayah, fasilitas, dan kondisi kebencanaan.'
-                                            : role === 'petugas'
-                                              ? 'Pantau kejadian aktif dan laporan yang membutuhkan penanganan.'
-                                              : 'Lihat informasi kejadian dan kondisi kebencanaan di sekitar Anda.'}
+                                    <p className="mt-1 max-w-2xl text-sm text-navy-100/80">
+                                        {role === "admin"
+                                            ? "Pantau kejadian, wilayah, fasilitas, dan kondisi kebencanaan secara terintegrasi."
+                                            : role === "petugas"
+                                              ? "Pantau kejadian aktif dan laporan yang membutuhkan penanganan."
+                                              : "Lihat informasi kejadian dan kondisi kebencanaan di sekitar Anda."}
                                     </p>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium capitalize text-primary">
-                                {role}
-                            </span>
-
-                            {area && (
-                                <span className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium">
-                                    {area.name}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold capitalize text-forest-400 backdrop-blur">
+                                    {role}
                                 </span>
-                            )}
+
+                                {area && (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium text-navy-50 backdrop-blur">
+                                        <MapPin className="size-3.5 text-sun-300" />
+                                        {area.name}
+                                    </span>
+                                )}
+                            </div>
                         </div>
+                    </section>
+
+                    {/* =====================================================
+                        STATISTICS
+                    ====================================================== */}
+                    <div className={statGridClass}>
+                        {loading
+                            ? Array.from({ length: statCards.length }).map(
+                                  (_, i) => <StatCardSkeleton key={i} />,
+                              )
+                            : statCards.map((card, i) => (
+                                  <Reveal key={card.title} delay={i * 80}>
+                                      <StatCard {...card} />
+                                  </Reveal>
+                              ))}
                     </div>
 
-                    {/* ADMIN */}
-                    {role === 'admin' && (
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <StatCard
-                                title="Total Laporan"
-                                value={stats.total_reports}
-                                description="Laporan aktif"
-                                icon={BarChart3}
-                            />
-
-                            <StatCard
-                                title="Terverifikasi"
-                                value={stats.verified_reports}
-                                description="Sudah diverifikasi"
-                                icon={CheckCircle2}
-                            />
-
-                            <StatCard
-                                title="Sedang Ditangani"
-                                value={stats.handling_reports}
-                                description="Dalam penanganan"
-                                icon={Siren}
-                            />
-
-                            <StatCard
-                                title="Wilayah"
-                                value={stats.total_areas}
-                                description="Wilayah aktif"
-                                icon={Building2}
-                            />
-                        </div>
-                    )}
-
-                    {/* PETUGAS */}
-                    {role === 'petugas' && (
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <StatCard
-                                title="Kejadian Aktif"
-                                value={stats.active_reports}
-                                description="Kejadian aktif"
-                                icon={AlertTriangle}
-                            />
-
-                            <StatCard
-                                title="Sedang Ditangani"
-                                value={stats.handling_reports}
-                                description="Dalam penanganan"
-                                icon={Siren}
-                            />
-
-                            <StatCard
-                                title="Prioritas Tinggi"
-                                value={stats.high_reports}
-                                description="Severity berat"
-                                icon={ShieldAlert}
-                            />
-
-                            <StatCard
-                                title="Kritis"
-                                value={stats.critical_reports}
-                                description="Prioritas utama"
-                                icon={CircleAlert}
-                            />
-                        </div>
-                    )}
-
-                    {/* WARGA */}
-                    {role === 'warga' && (
-                        <div className="grid gap-3 sm:grid-cols-3">
-                            <StatCard
-                                title="Kejadian Aktif"
-                                value={stats.active_reports}
-                                description="Informasi terkini"
-                                icon={AlertTriangle}
-                            />
-
-                            <StatCard
-                                title="Zona Rawan"
-                                value={zones.length}
-                                description="Zona pada peta"
-                                icon={ShieldAlert}
-                            />
-
-                            <StatCard
-                                title="Fasilitas"
-                                value={stats.total_facilities}
-                                description="Fasilitas darurat"
-                                icon={Building2}
-                            />
-                        </div>
-                    )}
-
-                    {/* MAIN */}
+                    {/* =====================================================
+                        MAIN CONTENT
+                    ====================================================== */}
                     <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-                        {/* SIDEBAR */}
+                        {/* =================================================
+                            SIDEBAR
+                        ================================================== */}
                         <aside className="space-y-4">
                             {/* WILAYAH */}
-                            <div className="rounded-xl border bg-card p-4 shadow-sm">
-                                <h2 className="font-semibold">
-                                    Wilayah
-                                </h2>
+                            <Reveal delay={80} fill={false}>
+                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                    <PanelHeader
+                                        icon={MapPin}
+                                        tone="navy"
+                                        title="Wilayah"
+                                        description="Pilih wilayah untuk melihat detail peta."
+                                    />
 
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    Pilih wilayah untuk melihat detail peta.
-                                </p>
+                                    <select
+                                        value={selectedArea}
+                                        onChange={(event) =>
+                                            changeArea(event.target.value)
+                                        }
+                                        disabled={areas.length === 0}
+                                        className="mt-4 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        <option value="">Semua wilayah</option>
 
-                                <select
-                                    value={selectedArea}
-                                    onChange={(event) =>
-                                        changeArea(
-                                            event.target.value,
-                                        )
-                                    }
-                                    className="mt-3 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-                                >
-                                    <option value="">
-                                        Semua wilayah
-                                    </option>
+                                        {areas.map((item) => (
+                                            <option
+                                                key={item.id}
+                                                value={item.slug}
+                                            >
+                                                {item.label}
+                                            </option>
+                                        ))}
+                                    </select>
 
-                                    {areas.map((item) => (
-                                        <option
-                                            key={item.id}
-                                            value={item.slug}
-                                        >
-                                            {item.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                                    {areas.length === 0 && (
+                                        <p className="mt-2 flex items-start gap-1.5 text-xs text-sun-600 dark:text-sun-300">
+                                            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                                            <span>
+                                                Data wilayah belum tersedia.{" "}
+                                                {role === "admin"
+                                                    ? "Tambahkan lewat menu Kelola Wilayah."
+                                                    : "Hubungi admin untuk menambahkannya."}
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
+                            </Reveal>
 
                             {/* JENIS BENCANA */}
-                            <div className="rounded-xl border bg-card p-4 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h2 className="font-semibold">
-                                            Jenis Bencana
-                                        </h2>
-
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            Filter kejadian.
-                                        </p>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        className="text-xs font-medium text-primary hover:underline"
-                                        onClick={() =>
-                                            setActiveTypeIds(
-                                                activeTypeIds.length ===
-                                                    types.length
-                                                    ? []
-                                                    : types.map(
-                                                          (type) =>
-                                                              type.id,
-                                                      ),
-                                            )
-                                        }
-                                    >
-                                        {activeTypeIds.length ===
-                                        types.length
-                                            ? 'Kosongkan'
-                                            : 'Pilih semua'}
-                                    </button>
-                                </div>
-
-                                <div className="mt-3 space-y-2">
-                                    {types.map((type) => {
-                                        const Icon =
-                                            TYPE_ICON[
-                                                type.slug as keyof typeof TYPE_ICON
-                                            ] ??
-                                            AlertTriangle;
-
-                                        const active =
-                                            activeTypeIds.includes(
-                                                type.id,
-                                            );
-
-                                        return (
+                            <Reveal delay={160} fill={false}>
+                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                    <PanelHeader
+                                        icon={AlertTriangle}
+                                        tone="sea"
+                                        title="Jenis Bencana"
+                                        description="Filter kejadian pada peta."
+                                        action={
                                             <button
-                                                key={type.id}
                                                 type="button"
-                                                onClick={() =>
-                                                    toggleType(
-                                                        type.id,
-                                                    )
+                                                onClick={
+                                                    allTypesActive
+                                                        ? clearAllTypes
+                                                        : selectAllTypes
                                                 }
-                                                className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition ${
-                                                    active
-                                                        ? 'border-primary/30 bg-primary/5'
-                                                        : 'opacity-50'
-                                                }`}
+                                                className="shrink-0 text-xs font-semibold text-navy-600 transition hover:text-navy-800 dark:text-navy-400 dark:hover:text-navy-200"
                                             >
-                                                <span
-                                                    className="flex size-9 shrink-0 items-center justify-center rounded-lg text-white"
-                                                    style={{
-                                                        backgroundColor:
-                                                            type.color,
-                                                    }}
-                                                >
-                                                    <Icon className="size-4" />
-                                                </span>
-
-                                                <span className="flex-1 text-sm font-medium">
-                                                    {type.name}
-                                                </span>
-
-                                                <span
-                                                    className={`size-3 rounded-full ${
-                                                        active
-                                                            ? 'bg-primary'
-                                                            : 'border'
-                                                    }`}
-                                                />
+                                                {allTypesActive
+                                                    ? "Kosongkan"
+                                                    : "Pilih semua"}
                                             </button>
-                                        );
-                                    })}
+                                        }
+                                    />
+
+                                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                                        {types.map((type) => {
+                                            const Icon =
+                                                TYPE_ICON[
+                                                    type.slug as keyof typeof TYPE_ICON
+                                                ] ?? AlertTriangle;
+
+                                            const active =
+                                                activeTypeIds.includes(type.id);
+
+                                            return (
+                                                <button
+                                                    key={type.id}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        toggleType(type.id)
+                                                    }
+                                                    className={[
+                                                        "flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm",
+                                                        active
+                                                            ? "border-navy-200 bg-navy-50 dark:border-navy-500/30 dark:bg-navy-500/10"
+                                                            : "border-border opacity-50 hover:opacity-80",
+                                                    ].join(" ")}
+                                                >
+                                                    <span
+                                                        className="flex size-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
+                                                        style={{
+                                                            backgroundColor:
+                                                                type.color,
+                                                        }}
+                                                    >
+                                                        <Icon className="size-4" />
+                                                    </span>
+
+                                                    <span className="flex-1 text-sm font-medium">
+                                                        {type.name}
+                                                    </span>
+
+                                                    <span
+                                                        className={[
+                                                            "flex size-5 items-center justify-center rounded-full border transition",
+                                                            active
+                                                                ? "border-forest-500 bg-forest-500"
+                                                                : "border-muted-foreground/30",
+                                                        ].join(" ")}
+                                                    >
+                                                        {active && (
+                                                            <CheckCircle2 className="size-3.5 text-white" />
+                                                        )}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
+                            </Reveal>
 
-                            {/* LAYER */}
-                            <div className="rounded-xl border bg-card p-4 shadow-sm">
-                                <h2 className="font-semibold">
-                                    Tampilan Peta
-                                </h2>
+                            {/* TAMPILAN PETA */}
+                            <Reveal delay={240} fill={false}>
+                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                    <PanelHeader
+                                        icon={ShieldAlert}
+                                        tone="forest"
+                                        title="Tampilan Peta"
+                                        description="Atur layer yang ingin ditampilkan."
+                                    />
 
-                                <div className="mt-3 space-y-3 text-sm">
-                                    <label className="flex items-center justify-between">
-                                        <span>Zona rawan</span>
-
-                                        <input
-                                            type="checkbox"
+                                    <div className="mt-4 space-y-2">
+                                        <LayerToggle
+                                            label="Zona rawan"
+                                            hasData={hasZones}
                                             checked={showZones}
-                                            onChange={(event) =>
-                                                setShowZones(
-                                                    event.target
-                                                        .checked,
-                                                )
-                                            }
+                                            onChange={setShowZones}
                                         />
-                                    </label>
 
-                                    <label className="flex items-center justify-between">
-                                        <span>
-                                            Fasilitas darurat
-                                        </span>
-
-                                        <input
-                                            type="checkbox"
-                                            checked={
-                                                showFacilities
-                                            }
-                                            onChange={(event) =>
-                                                setShowFacilities(
-                                                    event.target
-                                                        .checked,
-                                                )
-                                            }
+                                        <LayerToggle
+                                            label="Fasilitas darurat"
+                                            hasData={hasFacilities}
+                                            checked={showFacilities}
+                                            onChange={setShowFacilities}
                                         />
-                                    </label>
+                                    </div>
                                 </div>
-                            </div>
+                            </Reveal>
 
                             {/* ADMIN ACTION */}
-                            {role === 'admin' && (
-                                <>
-                                    <Link
-                                        href="/admin/areas"
-                                        className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm font-medium shadow-sm hover:bg-muted"
-                                    >
-                                        Kelola Wilayah
-                                        <ChevronRight className="size-4" />
-                                    </Link>
+                            {role === "admin" && (
+                                <Reveal delay={320} fill={false}>
+                                    <div className="space-y-2">
+                                        <Link
+                                            href="/admin/areas"
+                                            className={adminLinkClass}
+                                        >
+                                            <span>Kelola Wilayah</span>
+                                            <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                                        </Link>
 
-                                    <Link
-                                        href="/laporan"
-                                        className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm font-medium shadow-sm hover:bg-muted"
-                                    >
-                                        Kelola Laporan
-                                        <ChevronRight className="size-4" />
-                                    </Link>
-                                </>
+                                        <Link
+                                            href="/laporan"
+                                            className={adminLinkClass}
+                                        >
+                                            <span>Kelola Laporan</span>
+                                            <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                                        </Link>
+                                    </div>
+                                </Reveal>
                             )}
 
                             {/* WARGA ACTION */}
-                            {role === 'warga' && (
-                                <Link
-                                    href="/laporan/create"
-                                    className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
-                                >
-                                    <Siren className="size-4" />
-                                    Laporkan Kejadian
-                                </Link>
+                            {role === "warga" && (
+                                <Reveal delay={320} fill={false}>
+                                    <Link
+                                        href="/laporan/create"
+                                        className="flex items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-sun-400 to-sun-600 px-4 py-3.5 text-sm font-semibold text-white shadow-md shadow-sun-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-sun-500/40"
+                                    >
+                                        <Siren className="size-4" />
+                                        Laporkan Kejadian
+                                    </Link>
+                                </Reveal>
                             )}
 
-                            {/* CONTACT */}
+                            {/* KONTAK DARURAT */}
                             {contacts.length > 0 && (
-                                <div className="rounded-xl border bg-card p-4 shadow-sm">
-                                    <h2 className="font-semibold">
-                                        Kontak Darurat
-                                    </h2>
+                                <Reveal delay={400} fill={false}>
+                                    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                        <PanelHeader
+                                            icon={Siren}
+                                            tone="sun"
+                                            title="Kontak Darurat"
+                                            description="Hubungi petugas terkait."
+                                        />
 
-                                    <div className="mt-3 space-y-2">
-                                        {contacts
-                                            .slice(0, 4)
-                                            .map((contact) => (
-                                                <a
-                                                    key={
-                                                        contact.id
-                                                    }
-                                                    href={`tel:${contact.phone}`}
-                                                    className="block rounded-lg border p-2.5 hover:bg-muted"
-                                                >
-                                                    <p className="text-sm font-medium">
-                                                        {
-                                                            contact.name
-                                                        }
-                                                    </p>
-
-                                                    {contact.role && (
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {
-                                                                contact.role
-                                                            }
+                                        <div className="mt-4 space-y-2">
+                                            {contacts
+                                                .slice(0, 4)
+                                                .map((contact) => (
+                                                    <a
+                                                        key={contact.id}
+                                                        href={`tel:${contact.phone}`}
+                                                        className="block rounded-xl border border-border p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10"
+                                                    >
+                                                        <p className="text-sm font-semibold">
+                                                            {contact.name}
                                                         </p>
-                                                    )}
 
-                                                    <p className="mt-1 text-sm font-semibold text-primary">
-                                                        {
-                                                            contact.phone
-                                                        }
-                                                    </p>
-                                                </a>
-                                            ))}
+                                                        {contact.role && (
+                                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                                                {contact.role}
+                                                            </p>
+                                                        )}
+
+                                                        <p className="mt-1 text-sm font-semibold text-navy-600 dark:text-navy-400">
+                                                            {contact.phone}
+                                                        </p>
+                                                    </a>
+                                                ))}
+                                        </div>
                                     </div>
-                                </div>
+                                </Reveal>
                             )}
                         </aside>
 
-                        {/* MAP */}
-                        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-                            <div className="h-[620px]">
-                                <DisasterMap
-                                    center={center}
-                                    zoom={zoom}
-                                    boundary={boundary}
-                                    boundaryName={
-                                        area?.name ??
-                                        'Wilayah SIAGA-W'
-                                    }
-                                    reports={reports}
-                                    types={types}
-                                    zones={zones}
-                                    facilities={facilities}
-                                    activeTypeIds={
-                                        activeTypeIds
-                                    }
-                                    showZones={showZones}
-                                    showFacilities={
-                                        showFacilities
-                                    }
-                                />
-                            </div>
-                        </div>
-                    </div>
+                        {/* =================================================
+                            MAP
+                        ================================================== */}
+                        <Reveal delay={120} fill={false} plain>
+                            <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                                <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
+                                    <div>
+                                        <h2 className="text-sm font-semibold">
+                                            Peta Kejadian
+                                        </h2>
 
-                    {/* RECENT REPORT */}
-                    {recentReports.length > 0 && (
-                        <div className="rounded-xl border bg-card shadow-sm">
-                            <div className="flex items-center justify-between border-b p-4">
-                                <div>
-                                    <h2 className="font-semibold">
-                                        {role === 'petugas'
-                                            ? 'Kejadian yang Perlu Diperhatikan'
-                                            : 'Laporan Terbaru'}
-                                    </h2>
-
-                                    <p className="text-xs text-muted-foreground">
-                                        Informasi kejadian yang tampil pada
-                                        peta.
-                                    </p>
-                                </div>
-
-                                <Link
-                                    href="/laporan"
-                                    className="text-sm font-medium text-primary hover:underline"
-                                >
-                                    Lihat semua
-                                </Link>
-                            </div>
-
-                            <div className="divide-y">
-                                {recentReports.map((report) => {
-                                    const type = types.find(
-                                        (item) =>
-                                            item.id ===
-                                            report.type_id,
-                                    );
-
-                                    return (
-                                        <Link
-                                            key={report.id}
-                                            href={`/laporan/${report.id}`}
-                                            className="flex items-center gap-3 p-4 hover:bg-muted/50"
-                                        >
-                                            <span
-                                                className="flex size-10 shrink-0 items-center justify-center rounded-lg text-white"
-                                                style={{
-                                                    backgroundColor:
-                                                        type?.color ??
-                                                        '#64748b',
-                                                }}
-                                            >
-                                                <AlertTriangle className="size-5" />
-                                            </span>
-
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-sm font-semibold">
-                                                    {
-                                                        report.title
-                                                    }
-                                                </p>
-
-                                                <p className="truncate text-xs text-muted-foreground">
-                                                    {type?.name ??
-                                                        'Bencana'}{' '}
-                                                    •{' '}
-                                                    {report.address ??
-                                                        'Lokasi tidak tersedia'}
-                                                </p>
-                                            </div>
-
-                                            <span
-                                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                                                    SEVERITY_CLASS[
-                                                        report
-                                                            .severity
-                                                    ] ??
-                                                    'bg-muted'
-                                                }`}
-                                            >
-                                                {SEVERITY_LABEL[
-                                                    report.severity
-                                                ] ??
-                                                    report.severity}
-                                            </span>
-
-                                            <ChevronRight className="size-4 text-muted-foreground" />
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ANNOUNCEMENTS */}
-                    {announcements.length > 0 && (
-                        <div className="grid gap-3 md:grid-cols-3">
-                            {announcements.map(
-                                (announcement) => (
-                                    <div
-                                        key={announcement.id}
-                                        className="rounded-xl border bg-card p-4 shadow-sm"
-                                    >
-                                        <p className="text-xs font-semibold uppercase text-primary">
-                                            {announcement.level}
-                                        </p>
-
-                                        <h3 className="mt-1 font-semibold">
-                                            {
-                                                announcement.title
-                                            }
-                                        </h3>
-
-                                        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-                                            {
-                                                announcement.body
-                                            }
+                                        <p className="text-xs text-muted-foreground">
+                                            {visibleReports.length} kejadian
+                                            ditampilkan
                                         </p>
                                     </div>
-                                ),
-                            )}
-                        </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <span className="size-2 animate-pulse-ring rounded-full bg-forest-500" />
+                                        <span className="text-xs text-muted-foreground">
+                                            Data aktif
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="relative h-[420px] sm:h-[520px] xl:h-[620px]">
+                                    <DisasterMap
+                                        center={center}
+                                        zoom={zoom}
+                                        boundary={boundary}
+                                        boundaryName={
+                                            area?.name ?? "Wilayah SIAGA-W"
+                                        }
+                                        reports={reports}
+                                        types={types}
+                                        zones={zones}
+                                        facilities={facilities}
+                                        activeTypeIds={activeTypeIds}
+                                        showZones={hasZones && showZones}
+                                        showFacilities={
+                                            hasFacilities && showFacilities
+                                        }
+                                    />
+
+                                    {/* Skeleton menutupi peta saat memuat */}
+                                    {loading && (
+                                        <div className="absolute inset-0 z-[1000] bg-card p-4">
+                                            <div className="skeleton h-full w-full rounded-xl" />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </Reveal>
+                    </div>
+
+                    {/* =====================================================
+                        RECENT REPORTS
+                    ====================================================== */}
+                    {(loading || recentReports.length > 0) && (
+                        <Reveal delay={150} fill={false}>
+                            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                                <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-4 md:px-5">
+                                    <SectionTitle
+                                        title={
+                                            role === "petugas"
+                                                ? "Kejadian yang Perlu Diperhatikan"
+                                                : "Laporan Terbaru"
+                                        }
+                                        description="Informasi kejadian yang tampil pada peta."
+                                    />
+
+                                    <Link
+                                        href="/laporan"
+                                        className="shrink-0 text-sm font-semibold text-navy-600 transition hover:text-navy-800 hover:underline dark:text-navy-400"
+                                    >
+                                        Lihat semua
+                                    </Link>
+                                </div>
+
+                                {loading ? (
+                                    <ListSkeleton />
+                                ) : (
+                                    <div className="divide-y divide-border">
+                                        {recentReports.map((report, index) => {
+                                            const type = types.find(
+                                                (item) =>
+                                                    item.id === report.type_id,
+                                            );
+
+                                            return (
+                                                <Link
+                                                    key={report.id}
+                                                    href={`/laporan/${report.id}`}
+                                                    className="group flex animate-fade-in-up items-center gap-3 px-4 py-4 transition-colors hover:bg-navy-50 md:px-5 dark:hover:bg-navy-500/10"
+                                                    style={
+                                                        {
+                                                            animationDelay: `${index * 60}ms`,
+                                                        } as CSSProperties
+                                                    }
+                                                >
+                                                    <span
+                                                        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-transform duration-300 group-hover:scale-110"
+                                                        style={{
+                                                            backgroundColor:
+                                                                type?.color ??
+                                                                "#64748b",
+                                                        }}
+                                                    >
+                                                        <AlertTriangle className="size-5" />
+                                                    </span>
+
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-semibold">
+                                                            {report.title}
+                                                        </p>
+
+                                                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                                            {type?.name ??
+                                                                "Bencana"}{" "}
+                                                            •{" "}
+                                                            {report.address ??
+                                                                "Lokasi tidak tersedia"}
+                                                        </p>
+                                                    </div>
+
+                                                    <span
+                                                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                                            SEVERITY_CLASS[
+                                                                report.severity
+                                                            ] ?? "bg-muted"
+                                                        }`}
+                                                    >
+                                                        {SEVERITY_LABEL[
+                                                            report.severity
+                                                        ] ?? report.severity}
+                                                    </span>
+
+                                                    <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-all group-hover:translate-x-1 group-hover:text-navy-500" />
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </section>
+                        </Reveal>
+                    )}
+
+                    {/* =====================================================
+                        ANNOUNCEMENTS
+                    ====================================================== */}
+                    {announcements.length > 0 && (
+                        <section>
+                            <SectionTitle
+                                title="Informasi & Pengumuman"
+                                description="Informasi penting terkait kebencanaan."
+                            />
+
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                {loading
+                                    ? Array.from({
+                                          length: Math.min(
+                                              announcements.length,
+                                              3,
+                                          ),
+                                      }).map((_, i) => (
+                                          <div
+                                              key={i}
+                                              className="h-full space-y-3 rounded-2xl border border-border bg-card p-4"
+                                          >
+                                              <div className="skeleton h-5 w-16 rounded-full" />
+                                              <div className="skeleton h-5 w-3/4" />
+                                              <div className="skeleton h-3 w-full" />
+                                              <div className="skeleton h-3 w-5/6" />
+                                          </div>
+                                      ))
+                                    : announcements.map((announcement, i) => (
+                                          <Reveal
+                                              key={announcement.id}
+                                              delay={i * 80}
+                                          >
+                                              <div className="h-full rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40">
+                                                  <span className="inline-flex rounded-full bg-navy-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-navy-800 uppercase dark:bg-navy-500/15 dark:text-navy-200">
+                                                      {announcement.level}
+                                                  </span>
+
+                                                  <h3 className="mt-3 font-semibold">
+                                                      {announcement.title}
+                                                  </h3>
+
+                                                  <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+                                                      {announcement.body}
+                                                  </p>
+                                              </div>
+                                          </Reveal>
+                                      ))}
+                            </div>
+                        </section>
                     )}
                 </div>
             </div>

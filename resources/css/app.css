@@ -1,3 +1,4 @@
+@import url('https://fonts.bunny.net/css?family=poppins:300,400,500,600,700&display=swap');
 @import 'tailwindcss';
 
 @import 'tw-animate-css';
@@ -9,7 +10,7 @@
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Poppins', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
 
@@ -59,77 +60,179 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    /* ===== Brand SIAGA-W (diambil dari logo) ===== */
+    --color-navy-50: oklch(0.97 0.012 255);
+    --color-navy-100: oklch(0.93 0.03 255);
+    --color-navy-200: oklch(0.86 0.06 257);
+    --color-navy-400: oklch(0.65 0.15 258);
+    --color-navy-500: oklch(0.55 0.19 258);
+    --color-navy-600: oklch(0.47 0.18 259);
+    --color-navy-800: oklch(0.32 0.09 260);
+    --color-navy-900: oklch(0.24 0.07 262);
+    --color-navy-950: oklch(0.18 0.05 264);
+
+    --color-sea-300: oklch(0.82 0.1 215);
+    --color-sea-400: oklch(0.74 0.12 215);
+    --color-sea-500: oklch(0.66 0.12 215);
+
+    --color-sun-50: oklch(0.98 0.03 85);
+    --color-sun-100: oklch(0.95 0.07 82);
+    --color-sun-300: oklch(0.86 0.14 78);
+    --color-sun-400: oklch(0.8 0.16 72);
+    --color-sun-500: oklch(0.74 0.17 58);
+    --color-sun-600: oklch(0.66 0.18 48);
+
+    --color-forest-50: oklch(0.97 0.025 150);
+    --color-forest-100: oklch(0.93 0.06 148);
+    --color-forest-400: oklch(0.72 0.17 148);
+    --color-forest-500: oklch(0.62 0.16 148);
+    --color-forest-600: oklch(0.52 0.14 150);
+    --color-forest-800: oklch(0.38 0.09 152);
+
+    /* ===== Animasi ===== */
+    --animate-fade-in: fade-in 0.6s ease-out both;
+    --animate-fade-in-up: fade-in-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    --animate-blob: blob 18s ease-in-out infinite;
+    --animate-blob-slow: blob 26s ease-in-out infinite reverse;
+    --animate-float: float 6s ease-in-out infinite;
+    --animate-shimmer: shimmer 1.8s linear infinite;
+    --animate-pulse-ring: pulse-ring 2s ease-out infinite;
+
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes fade-in-up {
+        from {
+            opacity: 0;
+            transform: translateY(16px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes blob {
+        0%,
+        100% {
+            border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+            transform: translate(0, 0) rotate(0deg) scale(1);
+        }
+        33% {
+            border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+            transform: translate(30px, -40px) rotate(60deg) scale(1.08);
+        }
+        66% {
+            border-radius: 50% 50% 40% 60% / 40% 70% 50% 50%;
+            transform: translate(-25px, 25px) rotate(120deg) scale(0.94);
+        }
+    }
+
+    @keyframes float {
+        0%,
+        100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-8px);
+        }
+    }
+
+    @keyframes shimmer {
+        from {
+            background-position: 200% 0;
+        }
+        to {
+            background-position: -200% 0;
+        }
+    }
+
+    @keyframes pulse-ring {
+        0% {
+            box-shadow: 0 0 0 0 oklch(0.66 0.16 148 / 0.5);
+        }
+        100% {
+            box-shadow: 0 0 0 10px oklch(0.66 0.16 148 / 0);
+        }
+    }
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    --background: oklch(0.985 0.004 250);
+    --foreground: oklch(0.2 0.04 262);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.2 0.04 262);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.2 0.04 262);
+    --primary: oklch(0.47 0.18 259);
     --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.96 0.012 250);
+    --secondary-foreground: oklch(0.32 0.09 260);
+    --muted: oklch(0.96 0.01 250);
+    --muted-foreground: oklch(0.5 0.03 260);
+    --accent: oklch(0.95 0.03 250);
+    --accent-foreground: oklch(0.32 0.09 260);
     --destructive: oklch(0.577 0.245 27.325);
     --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.87 0 0);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
+    --border: oklch(0.92 0.012 250);
+    --input: oklch(0.92 0.012 250);
+    --ring: oklch(0.65 0.15 258);
+    --chart-1: oklch(0.55 0.19 258);
+    --chart-2: oklch(0.74 0.12 215);
+    --chart-3: oklch(0.62 0.16 148);
+    --chart-4: oklch(0.8 0.16 72);
+    --chart-5: oklch(0.66 0.18 48);
+    --radius: 0.75rem;
+    --sidebar: oklch(0.985 0.006 250);
+    --sidebar-foreground: oklch(0.2 0.04 262);
+    --sidebar-primary: oklch(0.47 0.18 259);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.87 0 0);
+    --sidebar-accent: oklch(0.95 0.03 250);
+    --sidebar-accent-foreground: oklch(0.32 0.09 260);
+    --sidebar-border: oklch(0.92 0.012 250);
+    --sidebar-ring: oklch(0.65 0.15 258);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: oklch(0.18 0.04 264);
+    --foreground: oklch(0.97 0.01 250);
+    --card: oklch(0.22 0.05 264);
+    --card-foreground: oklch(0.97 0.01 250);
+    --popover: oklch(0.22 0.05 264);
+    --popover-foreground: oklch(0.97 0.01 250);
+    --primary: oklch(0.65 0.15 258);
+    --primary-foreground: oklch(0.18 0.05 264);
+    --secondary: oklch(0.28 0.05 262);
+    --secondary-foreground: oklch(0.97 0.01 250);
+    --muted: oklch(0.28 0.05 262);
+    --muted-foreground: oklch(0.72 0.04 255);
+    --accent: oklch(0.3 0.06 262);
+    --accent-foreground: oklch(0.97 0.01 250);
     --destructive: oklch(0.396 0.141 25.723);
     --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
+    --border: oklch(0.3 0.05 262);
+    --input: oklch(0.3 0.05 262);
+    --ring: oklch(0.55 0.19 258);
+    --chart-1: oklch(0.65 0.15 258);
+    --chart-2: oklch(0.78 0.11 215);
+    --chart-3: oklch(0.72 0.17 148);
+    --chart-4: oklch(0.82 0.15 78);
+    --chart-5: oklch(0.7 0.18 50);
+    --sidebar: oklch(0.2 0.045 264);
+    --sidebar-foreground: oklch(0.97 0.01 250);
+    --sidebar-primary: oklch(0.65 0.15 258);
+    --sidebar-primary-foreground: oklch(0.18 0.05 264);
+    --sidebar-accent: oklch(0.3 0.06 262);
+    --sidebar-accent-foreground: oklch(0.97 0.01 250);
+    --sidebar-border: oklch(0.3 0.05 262);
+    --sidebar-ring: oklch(0.55 0.19 258);
 }
 
 @layer base {
@@ -137,7 +240,86 @@
         @apply border-border;
     }
 
+    html,
+    body,
+    button,
+    input,
+    select,
+    textarea {
+        font-family: var(--font-sans);
+    }
+
     body {
-        @apply bg-background text-foreground;
+        @apply bg-background text-foreground antialiased;
+    }
+}
+
+/* ===== Utility khusus SIAGA-W ===== */
+
+/* Skeleton shimmer berwarna brand */
+@utility skeleton {
+    border-radius: var(--radius-md);
+    background-color: var(--color-navy-100);
+    background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        oklch(1 0 0 / 0.65) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+
+    &:is(.dark *) {
+        background-color: oklch(0.3 0.05 262);
+        background-image: linear-gradient(
+            90deg,
+            transparent 0%,
+            oklch(1 0 0 / 0.08) 50%,
+            transparent 100%
+        );
+    }
+}
+
+/* Blob dekoratif (taruh di dalam parent `relative overflow-hidden`) */
+@utility blob {
+    position: absolute;
+    pointer-events: none;
+    filter: blur(64px);
+    will-change: transform, border-radius;
+}
+
+/* Gradient teks brand */
+@utility text-gradient-brand {
+    background-image: linear-gradient(
+        90deg,
+        var(--color-navy-500),
+        var(--color-sea-400) 45%,
+        var(--color-forest-500)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Kartu kaca */
+@utility glass {
+    background-color: oklch(1 0 0 / 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid oklch(1 0 0 / 0.5);
+
+    &:is(.dark *) {
+        background-color: oklch(0.22 0.05 264 / 0.7);
+        border-color: oklch(1 0 0 / 0.08);
+    }
+}
+
+/* Hormati preferensi "kurangi gerakan" */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
 }

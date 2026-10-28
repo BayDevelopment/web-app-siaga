@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Area;
+use App\Models\Facility;
+use App\Models\HazardZone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -14,25 +17,44 @@ use Inertia\Response;
 class AreaController extends Controller
 {
     /**
-     * Menampilkan daftar wilayah.
+     * Menampilkan daftar seluruh wilayah.
+     *
+     * Hierarki:
+     * Kelurahan
+     * └── RW
+     *     └── RT
      */
     public function index(): Response
     {
         $areas = Area::query()
             ->with('parent:id,name')
-            ->withCount('reports')
+            ->withCount([
+                'reports',
+                'children',
+            ])
+            ->orderByRaw("
+                CASE type
+                    WHEN 'kelurahan' THEN 1
+                    WHEN 'rw' THEN 2
+                    WHEN 'rt' THEN 3
+                    ELSE 4
+                END
+            ")
             ->orderBy('name')
             ->get()
-            ->map(fn (Area $a) => [
-                'id' => $a->id,
-                'name' => $a->name,
-                'type' => $a->type,
-                'slug' => $a->slug,
-                'parent' => $a->parent?->name,
-                'is_active' => $a->is_active,
-                'has_boundary' => ! empty($a->boundary_geojson),
-                'reports_count' => $a->reports_count,
-            ]);
+            ->map(fn (Area $area) => [
+                'id' => $area->id,
+                'name' => $area->name,
+                'type' => $area->type,
+                'slug' => $area->slug,
+                'parent_id' => $area->parent_id,
+                'parent' => $area->parent?->name,
+                'is_active' => (bool) $area->is_active,
+                'has_boundary' => ! empty($area->boundary_geojson),
+                'reports_count' => $area->reports_count,
+                'children_count' => $area->children_count,
+            ])
+            ->values();
 
         return Inertia::render('admin/areas/index', [
             'areas' => $areas,
@@ -41,6 +63,12 @@ class AreaController extends Controller
 
     /**
      * Menampilkan form tambah wilayah.
+     *
+     * Form frontend membaca:
+     * ?type=kelurahan
+     * ?type=rw
+     * ?type=rt
+     * ?parent_id=...
      */
     public function create(): Response
     {
@@ -86,15 +114,19 @@ class AreaController extends Controller
                 'type' => $area->type,
                 'slug' => $area->slug,
                 'parent_id' => $area->parent_id,
-                'is_active' => $area->is_active,
+                'is_active' => (bool) $area->is_active,
+
                 'center_lat' => $area->center_lat !== null
                     ? (float) $area->center_lat
                     : null,
+
                 'center_lng' => $area->center_lng !== null
                     ? (float) $area->center_lng
                     : null,
+
                 'boundary_geojson' => $area->boundary_geojson,
             ],
+
             'parents' => $this->parents($area),
         ]);
     }
@@ -108,16 +140,30 @@ class AreaController extends Controller
     ): RedirectResponse {
         $data = $this->validated($request, $area);
 
+        /**
+         * Tidak diperbolehkan mengganti tipe wilayah
+         * jika wilayah tersebut sudah memiliki turunan.
+         */
+        if (
+            $area->type !== $data['type']
+            && $area->children()->exists()
+        ) {
+            throw ValidationException::withMessages([
+                'type' =>
+                    'Jenis wilayah tidak dapat diubah karena wilayah ini masih memiliki wilayah turunan.',
+            ]);
+        }
+
         $data['parent_id'] = $this->resolveParentId(
             $data['type'],
             $data['parent_id'] ?? null,
             $area
         );
 
-        /*
-         * Slug sengaja tidak diubah saat edit.
-         * Tujuannya agar URL wilayah yang sudah dibagikan
-         * tetap dapat digunakan.
+        /**
+         * Slug sengaja tidak diubah saat edit agar URL
+         * wilayah yang sudah digunakan tetap aman.
+         * Jika slug lama kosong, baru dibuat.
          */
         if (! $area->slug) {
             $data['slug'] = $this->makeSlug(
@@ -136,16 +182,27 @@ class AreaController extends Controller
 
     /**
      * Menghapus wilayah.
+     *
+     * Wilayah tidak boleh dihapus jika masih memiliki:
+     * - wilayah turunan
+     * - laporan
+     * - zona rawan
+     * - fasilitas
+     *
+     * Ini mencegah data berubah menjadi global (area_id null)
+     * dan tampil di semua wilayah.
      */
     public function destroy(Area $area): RedirectResponse
     {
         if (
             $area->children()->exists()
             || $area->reports()->exists()
+            || Facility::query()->where('area_id', $area->id)->exists()
+            || HazardZone::query()->where('area_id', $area->id)->exists()
         ) {
             return back()->withErrors([
                 'delete' =>
-                    "Wilayah \"{$area->name}\" masih memiliki wilayah turunan atau laporan. Nonaktifkan saja.",
+                    "Wilayah \"{$area->name}\" masih memiliki wilayah turunan, laporan, zona rawan, atau fasilitas. Nonaktifkan saja.",
             ]);
         }
 
@@ -159,35 +216,46 @@ class AreaController extends Controller
     /**
      * Daftar parent yang tersedia untuk form.
      *
-     * Kelurahan:
-     * - tidak membutuhkan parent
-     *
-     * RW:
-     * - parent = Kelurahan
-     *
-     * RT:
-     * - parent = RW
-     *
-     * @return array<int, array<string, mixed>>
+     * Kelurahan: tidak memiliki parent
+     * RW: parent = Kelurahan
+     * RT: parent = RW
      */
     private function parents(?Area $except = null): array
     {
         return Area::query()
             ->whereIn('type', ['kelurahan', 'rw'])
+            ->where(function ($query) use ($except) {
+                /**
+                 * Parent aktif selalu tersedia. Parent yang sedang
+                 * dipakai wilayah yang diedit tetap ditampilkan
+                 * walaupun nonaktif, agar nilai lama tidak hilang.
+                 */
+                $query->where('is_active', true);
+
+                if ($except?->parent_id) {
+                    $query->orWhere('id', $except->parent_id);
+                }
+            })
             ->when(
                 $except,
-                fn ($q) => $q->where('id', '!=', $except->id)
+                fn ($query) => $query->where('id', '!=', $except->id)
             )
             ->with('parent:id,name')
-            ->orderBy('type')
+            ->orderByRaw("
+                CASE type
+                    WHEN 'kelurahan' THEN 1
+                    WHEN 'rw' THEN 2
+                    ELSE 3
+                END
+            ")
             ->orderBy('name')
             ->get()
-            ->map(fn (Area $a) => [
-                'id' => $a->id,
-                'type' => $a->type,
-                'name' => $a->name,
-                'parent_name' => $a->parent?->name,
-                'label' => $this->parentLabel($a),
+            ->map(fn (Area $area) => [
+                'id' => $area->id,
+                'type' => $area->type,
+                'name' => $area->name,
+                'parent_name' => $area->parent?->name,
+                'label' => $this->parentLabel($area),
             ])
             ->values()
             ->all();
@@ -196,11 +264,9 @@ class AreaController extends Controller
     /**
      * Validasi data wilayah.
      *
-     * Parent wajib ditentukan berdasarkan jenis wilayah:
-     *
-     * kelurahan -> tidak punya parent
-     * rw        -> parent harus kelurahan
-     * rt        -> parent harus rw
+     * Kelurahan -> tidak mempunyai parent
+     * RW        -> parent harus Kelurahan
+     * RT        -> parent harus RW
      *
      * @return array<string, mixed>
      */
@@ -269,6 +335,7 @@ class AreaController extends Controller
             ],
 
             'boundary_geojson.coordinates.0' => [
+                'required_with:boundary_geojson',
                 'array',
                 'min:4',
             ],
@@ -291,67 +358,89 @@ class AreaController extends Controller
     }
 
     /**
-     * Memastikan parent sesuai dengan jenis wilayah.
+     * Memastikan parent sesuai dengan jenis wilayah, serta
+     * mencegah wilayah menjadi parent dari dirinya sendiri
+     * atau salah satu turunannya.
      */
     private function resolveParentId(
         string $type,
         ?int $parentId,
         ?Area $area = null
     ): ?int {
-        /*
-         * Kelurahan adalah wilayah paling atas,
-         * sehingga tidak boleh mempunyai parent.
+        /**
+         * Kelurahan adalah level tertinggi.
          */
         if ($type === 'kelurahan') {
             return null;
         }
 
-        /*
-         * RW wajib memiliki Kelurahan sebagai parent.
+        /**
+         * RW harus memiliki Kelurahan sebagai parent.
          */
         if ($type === 'rw') {
             if (! $parentId) {
-                abort(
-                    422,
-                    'RW harus memiliki kelurahan induk.'
-                );
+                throw ValidationException::withMessages([
+                    'parent_id' => 'RW harus memiliki kelurahan induk.',
+                ]);
             }
 
-            $parent = Area::find($parentId);
+            $parent = Area::query()->find($parentId);
 
-            if (! $parent || $parent->type !== 'kelurahan') {
-                abort(
-                    422,
-                    'Wilayah induk RW harus berupa kelurahan.'
-                );
+            if (! $parent) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Kelurahan induk tidak ditemukan.',
+                ]);
+            }
+
+            if ($parent->type !== 'kelurahan') {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Wilayah induk RW harus berupa kelurahan.',
+                ]);
+            }
+
+            if (
+                $area
+                && in_array(
+                    $parent->id,
+                    $area->selfAndDescendantIds(),
+                    true
+                )
+            ) {
+                throw ValidationException::withMessages([
+                    'parent_id' =>
+                        'Wilayah induk tidak valid karena merupakan bagian dari wilayah ini.',
+                ]);
             }
 
             return $parent->id;
         }
 
-        /*
-         * RT wajib memiliki RW sebagai parent.
+        /**
+         * RT harus memiliki RW sebagai parent.
          */
         if ($type === 'rt') {
             if (! $parentId) {
-                abort(
-                    422,
-                    'RT harus memiliki RW induk.'
-                );
+                throw ValidationException::withMessages([
+                    'parent_id' => 'RT harus memiliki RW induk.',
+                ]);
             }
 
-            $parent = Area::find($parentId);
+            $parent = Area::query()->find($parentId);
 
-            if (! $parent || $parent->type !== 'rw') {
-                abort(
-                    422,
-                    'Wilayah induk RT harus berupa RW.'
-                );
+            if (! $parent) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'RW induk tidak ditemukan.',
+                ]);
             }
 
-            /*
-             * Saat edit, pastikan wilayah tidak menjadi
-             * parent dari dirinya sendiri atau turunannya.
+            if ($parent->type !== 'rw') {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Wilayah induk RT harus berupa RW.',
+                ]);
+            }
+
+            /**
+             * Mencegah circular hierarchy.
              */
             if (
                 $area
@@ -361,10 +450,10 @@ class AreaController extends Controller
                     true
                 )
             ) {
-                abort(
-                    422,
-                    'Wilayah induk tidak valid karena merupakan bagian dari wilayah ini.'
-                );
+                throw ValidationException::withMessages([
+                    'parent_id' =>
+                        'Wilayah induk tidak valid karena merupakan bagian dari wilayah ini.',
+                ]);
             }
 
             return $parent->id;
@@ -376,9 +465,8 @@ class AreaController extends Controller
     /**
      * Label parent untuk dropdown.
      *
-     * Contoh:
-     * - Warnasari
-     * - RW 07 — Warnasari
+     * Kelurahan: Warnasari
+     * RW:        RW 07 — Warnasari
      */
     private function parentLabel(Area $area): string
     {
@@ -394,33 +482,41 @@ class AreaController extends Controller
     }
 
     /**
-     * Membuat slug unik berdasarkan nama dan parent.
+     * Membuat slug unik dari seluruh rantai parent.
+     *
+     * Contoh:
+     * warnasari
+     * warnasari-rw-01
+     * warnasari-rw-01-rt-02
      */
     private function makeSlug(
         string $name,
         ?int $parentId,
         ?int $ignoreId = null
     ): string {
-        $parent = $parentId
-            ? Area::find($parentId)?->name
-            : null;
+        $parts = [$name];
+        $current = $parentId ? Area::query()->find($parentId) : null;
 
-        $base = Str::slug(
-            trim(
-                ($parent ? $parent . ' ' : '')
-                . $name
-            )
-        ) ?: 'wilayah';
+        // Naik maksimal 3 level (RT -> RW -> Kelurahan)
+        for ($depth = 0; $current && $depth < 3; $depth++) {
+            array_unshift($parts, $current->name);
+
+            $current = $current->parent_id
+                ? Area::query()->find($current->parent_id)
+                : null;
+        }
+
+        $base = Str::slug(implode(' ', $parts)) ?: 'wilayah';
 
         $slug = $base;
         $i = 2;
 
         while (
-            Area::where('slug', $slug)
+            Area::query()
+                ->where('slug', $slug)
                 ->when(
                     $ignoreId,
-                    fn ($q) =>
-                        $q->where('id', '!=', $ignoreId)
+                    fn ($query) => $query->where('id', '!=', $ignoreId)
                 )
                 ->exists()
         ) {

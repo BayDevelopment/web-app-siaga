@@ -12,23 +12,27 @@ class Report extends Model
 {
     use SoftDeletes;
 
-    /*
-    |--------------------------------------------------------------------------
-    | Status
-    |--------------------------------------------------------------------------
-    */
-
-    public const STATUS_PENDING = 'pending';
+    public const STATUS_PENDING  = 'pending';
     public const STATUS_VERIFIED = 'verified';
     public const STATUS_HANDLING = 'handling';
     public const STATUS_RESOLVED = 'resolved';
     public const STATUS_REJECTED = 'rejected';
 
-    /*
-    |--------------------------------------------------------------------------
-    | Mass Assignment
-    |--------------------------------------------------------------------------
-    */
+    public const STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_VERIFIED,
+        self::STATUS_HANDLING,
+        self::STATUS_RESOLVED,
+        self::STATUS_REJECTED,
+    ];
+
+    /** Status yang boleh tampil di area publik. */
+    public const PUBLIC_STATUSES = [
+        self::STATUS_VERIFIED,
+        self::STATUS_HANDLING,
+    ];
+
+    public const SEVERITIES = ['low', 'medium', 'high', 'critical'];
 
     protected $fillable = [
         'code',
@@ -50,52 +54,43 @@ class Report extends Model
         'resolved_at',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Casts
-    |--------------------------------------------------------------------------
-    */
-
     protected function casts(): array
     {
         return [
-            'latitude' => 'decimal:7',
-            'longitude' => 'decimal:7',
+            'latitude'    => 'decimal:7',
+            'longitude'   => 'decimal:7',
             'occurred_at' => 'datetime',
             'verified_at' => 'datetime',
             'resolved_at' => 'datetime',
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Model Events
-    |--------------------------------------------------------------------------
-    */
-
     protected static function booted(): void
     {
-        // Auto-generate kode laporan:
-        // LP-20261027-0001
+        // Kode: LP-20261028-0001
+        //
+        // PENTING: lockForUpdate hanya efektif kalau pemanggilnya berada di
+        // dalam DB::transaction (ReportController@store sudah melakukannya).
+        // Penjaga terakhir tetap unique index pada kolom `code`.
         static::creating(function (Report $report) {
-            if (empty($report->code)) {
-                $prefix = 'LP-' . now()->format('Ymd') . '-';
-
-                $count = static::withTrashed()
-                    ->where('code', 'like', $prefix . '%')
-                    ->count() + 1;
-
-                $report->code = $prefix
-                    . str_pad((string) $count, 4, '0', STR_PAD_LEFT);
+            if (! empty($report->code)) {
+                return;
             }
+
+            $prefix = 'LP-' . now()->format('Ymd') . '-';
+
+            $last = static::withTrashed()
+                ->where('code', 'like', $prefix . '%')
+                ->lockForUpdate()
+                ->max('code');
+
+            $next = $last ? ((int) substr($last, -4)) + 1 : 1;
+
+            $report->code = $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
         });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Relationships
-    |--------------------------------------------------------------------------
-    */
+    /* Relationships */
 
     public function user(): BelongsTo
     {
@@ -127,31 +122,15 @@ class Report extends Model
         return $this->hasMany(ReportUpdate::class)->latest();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Scopes
-    |--------------------------------------------------------------------------
-    */
+    /* Scopes */
 
-    /**
-     * Laporan yang boleh tampil di area publik.
-     *
-     * Status:
-     * - verified
-     * - handling
-     */
     public function scopePublicActive(Builder $query): Builder
     {
-        return $query->whereIn('status', [
-            self::STATUS_VERIFIED,
-            self::STATUS_HANDLING,
-        ]);
+        return $query->whereIn('status', self::PUBLIC_STATUSES);
     }
 
-    public function scopeStatus(
-        Builder $query,
-        string $status
-    ): Builder {
+    public function scopeStatus(Builder $query, string $status): Builder
+    {
         return $query->where('status', $status);
     }
 }
