@@ -163,6 +163,7 @@ class MapController extends Controller
                 'name',
                 'slug',
                 'color',
+                'icon',
             ]);
 
         /*
@@ -177,6 +178,7 @@ class MapController extends Controller
             'name',
             'level',
             'description',
+            'radius_m',
             'geojson',
         ]);
 

@@ -8,12 +8,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class HazardZone extends Model
 {
     protected $fillable = [
-        'disaster_type_id', 'area_id', 'name', 'level', 'description', 'geojson',
+        'disaster_type_id',
+        'area_id',
+        'name',
+        'level',
+        'description',
+        'geojson',
+        'radius_m',
     ];
 
     protected function casts(): array
     {
-        return ['geojson' => 'array'];
+        return [
+            'geojson' => 'array',
+            'radius_m' => 'integer',
+        ];
     }
 
     public function disasterType(): BelongsTo

@@ -11,15 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Zona rawan (area langganan banjir, rawan kebakaran, dll)
+        // Zona rawan (titik rawan banjir, rawan kebakaran, dll)
         Schema::create('hazard_zones', function (Blueprint $table) {
             $table->id();
             $table->foreignId('disaster_type_id')->constrained()->cascadeOnDelete();
             $table->foreignId('area_id')->nullable()->constrained()->nullOnDelete();
             $table->string('name');
             $table->string('level', 20)->default('medium'); // low | medium | high
+            $table->unsignedInteger('radius_m')->nullable(); // radius area terdampak (meter), opsional
             $table->text('description')->nullable();
-            $table->json('geojson'); // polygon / point zona
+            $table->json('geojson'); // GeoJSON Point [lng, lat] (data lama bisa polygon)
             $table->timestamps();
         });
     }
