@@ -13,7 +13,13 @@ import {
     TreePine,
     Waves,
 } from "lucide-react";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+    useEffect,
+    useMemo,
+    useState,
+    type CSSProperties,
+    type ReactNode,
+} from "react";
 
 import DisasterMap, {
     type MapBoundary,
@@ -23,8 +29,10 @@ import DisasterMap, {
     type MapZone,
 } from "@/components/map/disaster-map";
 
+/* ---------- Tipe ---------- */
+
 type Role = "admin" | "petugas" | "warga";
-type Tone = "ocean" | "sun" | "forest" | "navy" | "sea" | "danger";
+type Tone = "ocean" | "sun" | "forest" | "danger";
 
 type User = {
     id: number;
@@ -64,23 +72,19 @@ type Props = {
     auth: {
         user: User;
     };
-
     area: Area;
-
     areas: AreaOption[];
-
     boundary: MapBoundary | null;
-
     center: [number, number];
     zoom: number;
-
     reports: MapReport[];
     types: MapType[];
     zones: MapZone[];
     facilities: MapFacility[];
-
     stats: Stats;
 };
+
+/* ---------- Konstanta ---------- */
 
 const TYPE_ICON = {
     banjir: Waves,
@@ -88,17 +92,19 @@ const TYPE_ICON = {
     karhutla: Flame,
     longsor: Mountain,
     "pohon-tumbang": TreePine,
-};
+} as const;
 
 /* Warna ikon mengikuti palet logo */
 const toneClass: Record<Tone, string> = {
-    ocean: "bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400",
-    navy: "bg-navy-200/70 text-navy-800 dark:bg-navy-800/50 dark:text-navy-200",
-    sea: "bg-sea-300/30 text-sea-500 dark:bg-sea-500/15 dark:text-sea-300",
+    ocean:
+        "bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400",
     sun: "bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300",
-    forest: "bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-400",
+    forest:
+        "bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-400",
     danger: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
 };
+
+const FALLBACK_TYPE_COLOR = "#64748b";
 
 /* ---------- Helper animasi & skeleton ---------- */
 
@@ -132,8 +138,8 @@ function useFakeLoading(ms = 700) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const t = setTimeout(() => setLoading(false), ms);
-        return () => clearTimeout(t);
+        const timer = setTimeout(() => setLoading(false), ms);
+        return () => clearTimeout(timer);
     }, [ms]);
 
     return loading;
@@ -147,7 +153,7 @@ function StatCardSkeleton() {
                     <div className="skeleton h-3 w-24" />
                     <div className="skeleton h-8 w-14" />
                 </div>
-                <div className="skeleton h-10 w-10 rounded-xl" />
+                <div className="skeleton size-10 rounded-xl" />
             </div>
         </div>
     );
@@ -193,9 +199,8 @@ function StatCard({
                         {value}
                     </p>
                 </div>
-
                 <div
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${toneClass[tone]}`}
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105 ${toneClass[tone]}`}
                 >
                     <Icon className="size-5" />
                 </div>
@@ -239,19 +244,20 @@ function LayerToggle({
 }) {
     return (
         <label
-            className={`flex items-center justify-between ${
-                hasData ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+            className={`flex items-center justify-between rounded-xl border border-border px-3 py-2.5 transition ${
+                hasData
+                    ? "cursor-pointer hover:bg-muted/50"
+                    : "cursor-not-allowed opacity-60"
             }`}
         >
-            <span>
+            <span className="text-sm font-medium">
                 {label}
                 {!hasData && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                        (belum ada data)
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                        Belum ada data
                     </span>
                 )}
             </span>
-
             <input
                 type="checkbox"
                 className="size-4 accent-primary"
@@ -262,6 +268,8 @@ function LayerToggle({
         </label>
     );
 }
+
+/* ---------- Halaman ---------- */
 
 export default function PetaShow({
     auth,
@@ -291,6 +299,10 @@ export default function PetaShow({
 
     // Sinkronkan saat data berubah (pindah wilayah / reload)
     useEffect(() => {
+        setActiveTypeIds(types.map((type) => type.id));
+    }, [types]);
+
+    useEffect(() => {
         setShowZones(hasZones);
     }, [hasZones]);
 
@@ -298,8 +310,10 @@ export default function PetaShow({
         setShowFacilities(hasFacilities);
     }, [hasFacilities]);
 
-    const visibleReports = reports.filter((report) =>
-        activeTypeIds.includes(report.type_id),
+    const visibleReports = useMemo(
+        () =>
+            reports.filter((report) => activeTypeIds.includes(report.type_id)),
+        [reports, activeTypeIds],
     );
 
     const toggleType = (id: number) => {
@@ -312,11 +326,10 @@ export default function PetaShow({
 
     const changeArea = (slug: string) => {
         if (!slug) {
-            router.get("/peta");
+            router.get("/peta", {}, { preserveScroll: true });
             return;
         }
-
-        router.get(`/peta/${slug}`);
+        router.get(`/peta/${slug}`, {}, { preserveScroll: true });
     };
 
     return (
@@ -329,39 +342,39 @@ export default function PetaShow({
                     aria-hidden
                     className="pointer-events-none absolute inset-0 overflow-hidden"
                 >
-                    <div className="blob -top-24 -left-24 h-80 w-80 animate-blob bg-navy-400/20" />
-                    <div className="blob top-1/3 -right-32 h-96 w-96 animate-blob-slow bg-sun-300/20" />
-                    <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15" />
+                    <div className="blob -top-24 -left-24 h-80 w-80 animate-blob bg-navy-400/20 dark:bg-navy-500/10" />
+                    <div className="blob top-1/3 -right-32 h-96 w-96 animate-blob-slow bg-sun-300/20 dark:bg-sun-500/10" />
+                    <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15 dark:bg-forest-500/10" />
                 </div>
 
-                <div className="relative mx-auto max-w-[1800px] space-y-5 p-4 md:p-6">
-                    {/* HEADER */}
-                    <section className="relative animate-fade-in overflow-hidden rounded-3xl bg-linear-to-br from-navy-950 via-navy-900 to-navy-800 p-5 text-white shadow-xl shadow-navy-900/20 md:p-6">
-                        <div className="blob -top-16 -right-12 h-56 w-56 animate-blob bg-sun-400/30" />
-                        <div className="blob -bottom-20 left-1/3 h-56 w-56 animate-blob-slow bg-sea-400/25" />
-                        <div className="blob -bottom-12 -left-8 h-44 w-44 animate-blob bg-forest-500/25" />
+                <div className="relative mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6 lg:p-8">
+                    {/* =====================================================
+                        HEADER
+                    ====================================================== */}
+                    <section className="relative animate-fade-in overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-sm md:p-6">
+                        <div className="blob -top-16 -right-12 h-56 w-56 animate-blob bg-sun-400/10 dark:bg-sun-500/10" />
+                        <div className="blob -bottom-20 left-1/3 h-56 w-56 animate-blob-slow bg-sea-400/10 dark:bg-sea-500/10" />
+                        <div className="blob -bottom-12 -left-8 h-44 w-44 animate-blob bg-forest-500/10 dark:bg-forest-500/10" />
 
                         <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div>
                                 <Link
                                     href="/peta"
-                                    className="group mb-3 inline-flex items-center gap-1.5 text-sm text-navy-200 transition-colors hover:text-white"
+                                    className="group mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
                                 >
                                     <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
                                     Kembali ke peta utama
                                 </Link>
 
                                 <div className="flex items-center gap-3">
-                                    <div className="rounded-xl bg-linear-to-br from-sun-400 to-sun-600 p-2.5 text-navy-950 shadow-lg shadow-sun-500/30">
+                                    <div className="rounded-xl bg-navy-50 p-2.5 text-navy-600 shadow-sm dark:bg-navy-500/15 dark:text-navy-300">
                                         <MapPin className="size-5" />
                                     </div>
-
                                     <div className="min-w-0">
                                         <h1 className="truncate text-xl font-bold tracking-tight md:text-2xl">
                                             {area.name}
                                         </h1>
-
-                                        <p className="text-sm text-navy-200">
+                                        <p className="text-sm text-muted-foreground">
                                             Peta kejadian dan kondisi
                                             kebencanaan
                                             {area.parent && ` • ${area.parent}`}
@@ -370,15 +383,17 @@ export default function PetaShow({
                                 </div>
                             </div>
 
-                            <span className="w-fit rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium capitalize text-forest-400 backdrop-blur">
+                            <span className="w-fit rounded-full border border-forest-200 bg-forest-50 px-3 py-1.5 text-xs font-medium capitalize text-forest-600 dark:border-forest-500/30 dark:bg-forest-500/10 dark:text-forest-300">
                                 {role}
                             </span>
                         </div>
                     </section>
 
-                    {/* AREA SELECTOR */}
+                    {/* =====================================================
+                        AREA SELECTOR
+                    ====================================================== */}
                     <Reveal fill={false}>
-                        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                 <PanelTitle
                                     title="Pilih Wilayah"
@@ -392,10 +407,11 @@ export default function PetaShow({
                                             changeArea(event.target.value)
                                         }
                                         disabled={areas.length === 0}
-                                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-60 dark:focus:ring-primary/40"
                                     >
-                                        <option value="">Semua wilayah</option>
-
+                                        <option value="">
+                                            Semua wilayah
+                                        </option>
                                         {areas.map((item) => (
                                             <option
                                                 key={item.id}
@@ -422,56 +438,59 @@ export default function PetaShow({
                         </div>
                     </Reveal>
 
-                    {/* STATS */}
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        {loading ? (
-                            Array.from({ length: 4 }).map((_, i) => (
-                                <StatCardSkeleton key={i} />
-                            ))
-                        ) : (
-                            <>
-                                <Reveal delay={0}>
-                                    <StatCard
-                                        title="Kejadian Aktif"
-                                        value={stats.active_reports}
-                                        icon={AlertTriangle}
-                                        tone="danger"
-                                    />
-                                </Reveal>
-                                <Reveal delay={80}>
-                                    <StatCard
-                                        title="Sedang Ditangani"
-                                        value={stats.handling_reports}
-                                        icon={Siren}
-                                        tone="sun"
-                                    />
-                                </Reveal>
-                                <Reveal delay={160}>
-                                    <StatCard
-                                        title="Zona Rawan"
-                                        value={zones.length}
-                                        icon={ShieldAlert}
-                                        tone="ocean"
-                                    />
-                                </Reveal>
-                                <Reveal delay={240}>
-                                    <StatCard
-                                        title="Fasilitas"
-                                        value={stats.total_facilities}
-                                        icon={Building2}
-                                        tone="forest"
-                                    />
-                                </Reveal>
-                            </>
-                        )}
+                    {/* =====================================================
+                        STATS
+                    ====================================================== */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {loading
+                            ? Array.from({ length: 4 }).map((_, i) => (
+                                  <StatCardSkeleton key={i} />
+                              ))
+                            : (
+                                  [
+                                      {
+                                          title: "Kejadian Aktif",
+                                          value: stats.active_reports,
+                                          icon: AlertTriangle,
+                                          tone: "danger" as Tone,
+                                      },
+                                      {
+                                          title: "Sedang Ditangani",
+                                          value: stats.handling_reports,
+                                          icon: Siren,
+                                          tone: "sun" as Tone,
+                                      },
+                                      {
+                                          title: "Zona Rawan",
+                                          value: zones.length,
+                                          icon: ShieldAlert,
+                                          tone: "ocean" as Tone,
+                                      },
+                                      {
+                                          title: "Fasilitas",
+                                          value: stats.total_facilities,
+                                          icon: Building2,
+                                          tone: "forest" as Tone,
+                                      },
+                                  ]
+                              ).map((card, i) => (
+                                  <Reveal key={card.title} delay={i * 80}>
+                                      <StatCard {...card} />
+                                  </Reveal>
+                              ))}
                     </div>
 
-                    {/* CONTENT */}
-                    <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-                        {/* FILTER */}
+                    {/* =====================================================
+                        CONTENT
+                    ====================================================== */}
+                    <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+                        {/* =================================================
+                            SIDEBAR / FILTER
+                        ================================================== */}
                         <aside className="space-y-4">
+                            {/* FILTER BENCANA */}
                             <Reveal delay={100} fill={false}>
-                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
                                     <PanelTitle title="Filter Bencana" />
 
                                     <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -480,9 +499,10 @@ export default function PetaShow({
                                                 TYPE_ICON[
                                                     type.slug as keyof typeof TYPE_ICON
                                                 ] ?? AlertTriangle;
-
                                             const active =
-                                                activeTypeIds.includes(type.id);
+                                                activeTypeIds.includes(
+                                                    type.id,
+                                                );
 
                                             return (
                                                 <button
@@ -491,6 +511,7 @@ export default function PetaShow({
                                                     onClick={() =>
                                                         toggleType(type.id)
                                                     }
+                                                    aria-pressed={active}
                                                     className={`flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${
                                                         active
                                                             ? "border-primary/30 bg-primary/5"
@@ -506,11 +527,9 @@ export default function PetaShow({
                                                     >
                                                         <Icon className="size-4" />
                                                     </span>
-
                                                     <span className="flex-1 text-sm font-medium">
                                                         {type.name}
                                                     </span>
-
                                                     <span
                                                         className={`size-3 rounded-full transition-colors ${
                                                             active
@@ -525,18 +544,18 @@ export default function PetaShow({
                                 </div>
                             </Reveal>
 
+                            {/* LAYER PETA */}
                             <Reveal delay={180} fill={false}>
-                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                                <div className="rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
                                     <PanelTitle title="Layer Peta" />
 
-                                    <div className="mt-4 space-y-3 text-sm">
+                                    <div className="mt-4 space-y-2">
                                         <LayerToggle
                                             label="Zona rawan"
                                             hasData={hasZones}
                                             checked={showZones}
                                             onChange={setShowZones}
                                         />
-
                                         <LayerToggle
                                             label="Fasilitas"
                                             hasData={hasFacilities}
@@ -547,7 +566,7 @@ export default function PetaShow({
                                 </div>
                             </Reveal>
 
-                            {/* DAFTAR KEJADIAN (sejajar dengan peta) */}
+                            {/* DAFTAR KEJADIAN */}
                             <Reveal delay={150} fill={false}>
                                 <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                                     <div className="border-b border-border p-4">
@@ -561,10 +580,9 @@ export default function PetaShow({
                                         <ListSkeleton />
                                     ) : visibleReports.length === 0 ? (
                                         <div className="p-8 text-center">
-                                            <div className="mx-auto flex size-14 animate-float items-center justify-center rounded-full bg-navy-100 text-navy-500 dark:bg-navy-500/15">
+                                            <div className="mx-auto flex size-14 animate-float items-center justify-center rounded-full bg-navy-100 text-navy-500 dark:bg-navy-500/15 dark:text-navy-300">
                                                 <MapPin className="size-7" />
                                             </div>
-
                                             <p className="mt-3 text-sm font-medium">
                                                 Belum ada kejadian
                                             </p>
@@ -595,7 +613,7 @@ export default function PetaShow({
                                                                 style={{
                                                                     backgroundColor:
                                                                         type?.color ??
-                                                                        "#64748b",
+                                                                        FALLBACK_TYPE_COLOR,
                                                                 }}
                                                             >
                                                                 <AlertTriangle className="size-5" />
@@ -607,7 +625,6 @@ export default function PetaShow({
                                                                         report.title
                                                                     }
                                                                 </p>
-
                                                                 <p className="truncate text-xs text-muted-foreground">
                                                                     {type?.name ??
                                                                         "Bencana"}{" "}
@@ -627,11 +644,12 @@ export default function PetaShow({
                                 </div>
                             </Reveal>
 
+                            {/* WARGA ACTION */}
                             {role === "warga" && (
                                 <Reveal delay={260} fill={false}>
                                     <Link
                                         href="/laporan/create"
-                                        className="group flex items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-sun-400 to-sun-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-sun-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-sun-500/40"
+                                        className="group flex items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-sun-400 to-sun-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-sun-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-sun-500/40 dark:from-sun-500 dark:to-sun-700 dark:shadow-sun-900/40"
                                     >
                                         <Siren className="size-4" />
                                         Laporkan Kejadian
@@ -640,7 +658,9 @@ export default function PetaShow({
                             )}
                         </aside>
 
-                        {/* MAP */}
+                        {/* =================================================
+                            MAP
+                        ================================================== */}
                         <Reveal delay={120} fill={false} plain>
                             <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                                 <div className="h-[420px] sm:h-[520px] xl:h-[650px]">
@@ -663,7 +683,7 @@ export default function PetaShow({
 
                                 {/* Skeleton menutupi peta saat memuat */}
                                 {loading && (
-                                    <div className="absolute inset-0 z-[1000] flex flex-col gap-3 bg-card p-4">
+                                    <div className="absolute inset-0 z-[1000] bg-card p-4">
                                         <div className="skeleton h-full w-full rounded-xl" />
                                     </div>
                                 )}

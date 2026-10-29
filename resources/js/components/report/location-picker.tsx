@@ -1,43 +1,70 @@
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { CircleAlert, Crosshair, Info, MapPin } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { CircleAlert, Crosshair, Info, MapPin } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+/* ---------- Tipe ---------- */
 
 export type PickerArea = {
     id: number | string;
     name: string;
-    /** Nama induk wilayah (mis. kelurahan), dipakai untuk pencarian cadangan. */
-    parent_name?: string | null;
     center_lat?: number | string | null;
     center_lng?: number | string | null;
     boundary_geojson?: unknown;
 };
 
+export type PointGeo = {
+    type: "Point";
+    coordinates: [number, number];
+};
+
 type Props = {
-    areas: PickerArea[];
+    areas?: PickerArea[] | null;
     /** Nilai area_id dari form (string kosong jika belum dipilih). */
     areaId: string | number;
     /** Nilai latitude/longitude dari form (string kosong jika belum dipilih). */
     latitude: string | number;
     longitude: string | number;
-    onChange: (lat: number, lng: number) => void;
+    onChange: (geo: PointGeo | null) => void;
     error?: string;
 };
+
+type Polygon = number[][][]; // [ring][titik][lng, lat]
+
+/* ---------- Konstanta ---------- */
 
 // Titik awal jika wilayah belum dipilih (sama dengan peta utama).
 const DEFAULT_CENTER: [number, number] = [-6.0, 106.03];
 const DEFAULT_ZOOM = 15;
 const AREA_ZOOM = 16;
+const LOCATE_ZOOM = 17;
 
+// Pin memakai warna brand (sun-500) dari app.css; fallback jika variabel
+// belum ter-generate oleh Tailwind.
 const PIN_ICON = L.divIcon({
-    className: '',
-    html: '<span style="display:block;width:22px;height:22px;border-radius:9999px;background:#f59e0b;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45)"></span>',
+    className: "",
+    html: '<span style="display:block;width:22px;height:22px;border-radius:9999px;background:var(--color-sun-500,oklch(0.74 0.17 58));border:3px solid oklch(1 0 0);box-shadow:0 2px 8px oklch(0 0 0 / .45)"></span>',
     iconSize: [22, 22],
     iconAnchor: [11, 11],
 });
 
+// Warna garis/isi dikontrol lewat class (mendukung dark mode),
+// sehingga atribut `color` hanya berfungsi sebagai fallback.
+const BOUNDARY_STYLE: L.PathOptions = {
+    color: "oklch(0.47 0.18 259)",
+    weight: 2,
+    dashArray: "6 4",
+    fillColor: "oklch(0.55 0.19 258)",
+    fillOpacity: 0.06,
+    className: "stroke-navy-600 fill-navy-500 dark:stroke-navy-400",
+};
+
+/* ---------- Helper ---------- */
+
 function toNumber(value: unknown): number | null {
-    if (value === '' || value === null || value === undefined) {
+    if (value === "" || value === null || value === undefined) {
         return null;
     }
 
@@ -53,12 +80,105 @@ function parseGeoJson(value: unknown): GeoJSON.GeoJsonObject | null {
 
     try {
         return (
-            typeof value === 'string' ? JSON.parse(value) : value
+            typeof value === "string" ? JSON.parse(value) : value
         ) as GeoJSON.GeoJsonObject;
     } catch {
         return null;
     }
 }
+
+/** Ambil semua polygon dari Feature / FeatureCollection / Geometry apa pun. */
+function collectPolygons(geo: GeoJSON.GeoJsonObject | null): Polygon[] {
+    if (!geo) {
+        return [];
+    }
+
+    switch (geo.type) {
+        case "Polygon":
+            return [(geo as GeoJSON.Polygon).coordinates];
+        case "MultiPolygon":
+            return (geo as GeoJSON.MultiPolygon).coordinates;
+        case "Feature":
+            return collectPolygons(
+                (geo as GeoJSON.Feature).geometry as GeoJSON.GeoJsonObject | null,
+            );
+        case "FeatureCollection":
+            return (geo as GeoJSON.FeatureCollection).features.flatMap(
+                (feature) => collectPolygons(feature),
+            );
+        case "GeometryCollection":
+            return (geo as GeoJSON.GeometryCollection).geometries.flatMap(
+                (geometry) => collectPolygons(geometry),
+            );
+        default:
+            return [];
+    }
+}
+
+/** Ray casting: apakah titik berada di dalam satu ring. */
+function inRing(x: number, y: number, ring: number[][]): boolean {
+    let inside = false;
+
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i];
+        const [xj, yj] = ring[j];
+
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+    }
+
+    return inside;
+}
+
+function inPolygon(x: number, y: number, polygon: Polygon): boolean {
+    const [outer, ...holes] = polygon;
+
+    if (!outer || !inRing(x, y, outer)) {
+        return false;
+    }
+
+    return !holes.some((hole) => inRing(x, y, hole));
+}
+
+/* ---------- Komponen kecil ---------- */
+
+const NOTICE_TONES = {
+    warning: {
+        box: "border-sun-300/60 bg-sun-50 dark:border-sun-500/20 dark:bg-sun-500/10",
+        icon: "text-sun-600 dark:text-sun-400",
+    },
+    danger: {
+        box: "border-destructive/30 bg-destructive/10 dark:border-destructive-foreground/20 dark:bg-destructive/20",
+        icon: "text-destructive-foreground",
+    },
+} as const;
+
+function Notice({
+    tone,
+    icon: Icon,
+    alert = false,
+    children,
+}: {
+    tone: keyof typeof NOTICE_TONES;
+    icon: LucideIcon;
+    alert?: boolean;
+    children: ReactNode;
+}) {
+    const styles = NOTICE_TONES[tone];
+
+    return (
+        <div
+            role={alert ? "alert" : undefined}
+            className={`flex items-start gap-2 rounded-lg border px-3.5 py-3 text-xs leading-5 text-foreground ${styles.box}`}
+        >
+            <Icon className={`mt-0.5 size-3.5 shrink-0 ${styles.icon}`} />
+            <span>{children}</span>
+        </div>
+    );
+}
+
+/* ---------- Komponen utama ---------- */
 
 export default function LocationPicker({
     areas,
@@ -75,21 +195,40 @@ export default function LocationPicker({
 
     // Selalu pakai callback terbaru tanpa membuat ulang peta.
     const onChangeRef = useRef(onChange);
-    onChangeRef.current = onChange;
 
-    const [outside, setOutside] = useState(false);
+    useEffect(() => {
+        onChangeRef.current = onChange;
+    });
+
     const [locating, setLocating] = useState(false);
     const [geoError, setGeoError] = useState<string | null>(null);
-    const [searchingArea, setSearchingArea] = useState(false);
-    const [areaNote, setAreaNote] = useState<string | null>(null);
 
+    // Inertia/Laravel bisa mengirim null; default parameter hanya menangani undefined.
     const area = useMemo(
-        () => areas.find((item) => String(item.id) === String(areaId)) ?? null,
+        () =>
+            (Array.isArray(areas) ? areas : []).find(
+                (item) => String(item.id) === String(areaId),
+            ) ?? null,
         [areas, areaId],
     );
 
+    const boundary = useMemo(
+        () => parseGeoJson(area?.boundary_geojson),
+        [area],
+    );
+
+    const polygons = useMemo(() => collectPolygons(boundary), [boundary]);
+
     const lat = toNumber(latitude);
     const lng = toNumber(longitude);
+
+    // Dihitung langsung (tanpa state) dan memakai polygon sebenarnya,
+    // bukan sekadar kotak pembatas, supaya peringatan akurat.
+    const outside =
+        lat !== null &&
+        lng !== null &&
+        polygons.length > 0 &&
+        !polygons.some((polygon) => inPolygon(lng, lat, polygon));
 
     /* Buat peta satu kali */
     useEffect(() => {
@@ -103,14 +242,17 @@ export default function LocationPicker({
             scrollWheelZoom: false,
         });
 
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19,
             attribution:
                 '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         }).addTo(map);
 
-        map.on('click', (event: L.LeafletMouseEvent) => {
-            onChangeRef.current(event.latlng.lat, event.latlng.lng);
+        map.on("click", (event: L.LeafletMouseEvent) => {
+            onChangeRef.current({
+                type: "Point",
+                coordinates: [event.latlng.lng, event.latlng.lat],
+            });
         });
 
         mapRef.current = map;
@@ -137,19 +279,10 @@ export default function LocationPicker({
 
         boundaryRef.current?.remove();
         boundaryRef.current = null;
-        setAreaNote(null);
 
-        const geojson = parseGeoJson(area?.boundary_geojson);
-
-        if (geojson) {
-            const layer = L.geoJSON(geojson, {
-                style: {
-                    color: '#1e40af',
-                    weight: 2,
-                    dashArray: '6 4',
-                    fillColor: '#3b82f6',
-                    fillOpacity: 0.06,
-                },
+        if (boundary) {
+            const layer = L.geoJSON(boundary, {
+                style: BOUNDARY_STYLE,
                 interactive: false,
             }).addTo(map);
 
@@ -169,62 +302,8 @@ export default function LocationPicker({
 
         if (centerLat !== null && centerLng !== null) {
             map.setView([centerLat, centerLng], AREA_ZOOM);
-
-            return;
         }
-
-        // Cadangan: data wilayah tidak punya koordinat, cari lewat nama wilayah.
-        if (!area) {
-            return;
-        }
-
-        const controller = new AbortController();
-        const query = [area.name, area.parent_name, 'Indonesia']
-            .filter(Boolean)
-            .join(', ');
-
-        setSearchingArea(true);
-
-        fetch(
-            `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=id&q=${encodeURIComponent(query)}`,
-            {
-                signal: controller.signal,
-                headers: { Accept: 'application/json' },
-            },
-        )
-            .then((response) => (response.ok ? response.json() : []))
-            .then((results: { lat: string; lon: string }[]) => {
-                const first = results[0];
-
-                if (first && mapRef.current === map) {
-                    map.setView(
-                        [Number(first.lat), Number(first.lon)],
-                        AREA_ZOOM,
-                    );
-                } else if (!first) {
-                    setAreaNote(
-                        'Peta belum menemukan wilayah ini secara otomatis. Geser peta lalu klik lokasi kejadian.',
-                    );
-                }
-            })
-            .catch(() => {
-                if (!controller.signal.aborted) {
-                    setAreaNote(
-                        'Peta belum menemukan wilayah ini secara otomatis. Geser peta lalu klik lokasi kejadian.',
-                    );
-                }
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) {
-                    setSearchingArea(false);
-                }
-            });
-
-        return () => {
-            controller.abort();
-            setSearchingArea(false);
-        };
-    }, [area]);
+    }, [area, boundary]);
 
     /* Sinkronkan pin dengan nilai form (klik peta, ketik manual, atau GPS) */
     useEffect(() => {
@@ -237,7 +316,6 @@ export default function LocationPicker({
         if (lat === null || lng === null) {
             markerRef.current?.remove();
             markerRef.current = null;
-            setOutside(false);
 
             return;
         }
@@ -250,12 +328,16 @@ export default function LocationPicker({
             const marker = L.marker(position, {
                 icon: PIN_ICON,
                 draggable: true,
+                title: "Geser untuk memindahkan titik",
             }).addTo(map);
 
-            marker.on('dragend', () => {
+            marker.on("dragend", () => {
                 const point = marker.getLatLng();
 
-                onChangeRef.current(point.lat, point.lng);
+                onChangeRef.current({
+                    type: "Point",
+                    coordinates: [point.lng, point.lat],
+                });
             });
 
             markerRef.current = marker;
@@ -264,19 +346,14 @@ export default function LocationPicker({
         if (!map.getBounds().contains(position)) {
             map.panTo(position);
         }
+    }, [lat, lng]);
 
-        const bounds = boundaryRef.current?.getBounds();
-
-        setOutside(
-            Boolean(bounds && bounds.isValid() && !bounds.contains(position)),
-        );
-    }, [lat, lng, area]);
-
-    function useMyLocation() {
+    // Bukan hook, jadi tidak diawali "use" (menghindari false-positive aturan hooks).
+    function handleLocate() {
         setGeoError(null);
 
-        if (!('geolocation' in navigator)) {
-            setGeoError('Perangkat Anda tidak mendukung lokasi otomatis.');
+        if (!("geolocation" in navigator)) {
+            setGeoError("Perangkat Anda tidak mendukung lokasi otomatis.");
 
             return;
         }
@@ -285,18 +362,18 @@ export default function LocationPicker({
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
-                setLocating(false);
-                onChange(position.coords.latitude, position.coords.longitude);
+                const { latitude: gpsLat, longitude: gpsLng } = position.coords;
 
-                mapRef.current?.setView(
-                    [position.coords.latitude, position.coords.longitude],
-                    17,
-                );
+                setLocating(false);
+                onChange({ type: "Point", coordinates: [gpsLng, gpsLat] });
+                mapRef.current?.setView([gpsLat, gpsLng], LOCATE_ZOOM);
             },
-            () => {
+            (failure) => {
                 setLocating(false);
                 setGeoError(
-                    'Lokasi tidak bisa diambil. Izinkan akses lokasi di browser, atau klik langsung di peta.',
+                    failure.code === failure.PERMISSION_DENIED
+                        ? "Akses lokasi ditolak. Izinkan akses lokasi di browser, atau klik langsung di peta."
+                        : "Lokasi tidak bisa diambil. Coba lagi, atau klik langsung di peta.",
                 );
             },
             { enableHighAccuracy: true, timeout: 10000 },
@@ -304,92 +381,105 @@ export default function LocationPicker({
     }
 
     return (
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <span className="h-6 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
-                    <div>
-                        <h2 className="text-lg font-semibold text-foreground">
-                            Pilih lokasi di peta
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                            Klik peta atau geser pin. Latitude dan longitude
-                            terisi otomatis.
-                        </p>
-                    </div>
-                </div>
+        <div className="w-full min-w-0 space-y-4">
+            {/* Toolbar: info + tombol GPS */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="flex min-w-0 items-start gap-2 text-xs leading-5 text-muted-foreground">
+                    <Info className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                        Klik peta untuk memilih titik, lalu geser pin jika perlu.
+                        Koordinat akan terisi otomatis.
+                    </span>
+                </p>
 
                 <button
                     type="button"
-                    onClick={useMyLocation}
+                    onClick={handleLocate}
                     disabled={locating}
-                    className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-navy-200 hover:bg-navy-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-navy-500/10"
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3.5 text-sm font-semibold text-foreground shadow-sm transition outline-none hover:border-navy-200 hover:bg-navy-50 hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10"
                 >
-                    <Crosshair className="h-4 w-4" />
-                    {locating ? 'Mencari lokasi…' : 'Gunakan lokasi saya'}
+                    <Crosshair className="size-4" />
+                    {locating ? "Mencari lokasi…" : "Gunakan lokasi saya"}
                 </button>
             </div>
 
-            {!area && (
-                <p className="mb-3 flex items-start gap-2 text-xs text-muted-foreground">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    Pilih wilayah terlebih dahulu agar peta langsung menuju
-                    wilayah tersebut.
-                </p>
-            )}
-
-            {searchingArea && (
-                <p className="mb-3 text-xs text-muted-foreground">
-                    Mencari wilayah di peta…
-                </p>
-            )}
-
-            {areaNote && (
-                <p className="mb-3 flex items-start gap-2 text-xs text-muted-foreground">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    {areaNote}
-                </p>
-            )}
-
-            <div className="relative isolate overflow-hidden rounded-xl border border-border">
-                <div ref={containerRef} className="z-0 h-72 w-full sm:h-96" />
+            {/* Peta */}
+            <div className="relative isolate overflow-hidden rounded-lg border border-border bg-muted/30 shadow-sm">
+                {/*
+                  leaflet.css tidak berada di dalam @layer, jadi untuk menimpanya
+                  class di bawah memakai modifier `!` (important).
+                */}
+                <div
+                    ref={containerRef}
+                    role="application"
+                    aria-label="Peta pemilih lokasi"
+                    className={[
+                        "z-0 h-80 w-full font-sans! sm:h-[420px]",
+                        // Tile sedikit diredam di dark mode agar tidak menyilaukan.
+                        "dark:[&_.leaflet-tile-pane]:brightness-[0.8] dark:[&_.leaflet-tile-pane]:contrast-[1.05]",
+                        // Kontrol zoom
+                        "[&_.leaflet-bar]:border-border! [&_.leaflet-bar]:shadow-md!",
+                        "[&_.leaflet-bar_a]:bg-card! [&_.leaflet-bar_a]:text-foreground! [&_.leaflet-bar_a]:border-border!",
+                        "[&_.leaflet-bar_a:hover]:bg-accent!",
+                        // Atribusi
+                        "[&_.leaflet-control-attribution]:bg-card/80! [&_.leaflet-control-attribution]:text-[10px]! [&_.leaflet-control-attribution]:text-muted-foreground!",
+                        "[&_.leaflet-control-attribution_a]:text-primary!",
+                    ].join(" ")}
+                />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-sun-500" />
+            {/* Koordinat + nama area */}
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3.5 py-3">
+                <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-sun-100 text-sun-600 dark:bg-sun-500/10 dark:text-sun-400">
+                        <MapPin className="size-3.5" />
+                    </span>
+
                     {lat !== null && lng !== null ? (
                         <span className="font-mono text-foreground">
                             {lat.toFixed(6)}, {lng.toFixed(6)}
                         </span>
                     ) : (
-                        'Belum ada titik dipilih'
+                        <span>Belum ada titik dipilih</span>
                     )}
-                </span>
+                </div>
+
+                {area && (
+                    <span className="rounded-full bg-navy-50 px-2.5 py-1 text-[11px] font-semibold text-navy-600 dark:bg-navy-500/10 dark:text-navy-400">
+                        {area.name}
+                    </span>
+                )}
             </div>
 
+            {/* Peringatan & error */}
+            {!area && (
+                <Notice tone="warning" icon={Info}>
+                    Pilih wilayah terlebih dahulu agar peta langsung menuju
+                    wilayah tersebut.
+                </Notice>
+            )}
+
             {outside && (
-                <p
-                    role="alert"
-                    className="mt-3 flex items-start gap-2 rounded-xl border border-sun-300/60 bg-sun-50 p-3 text-xs text-sun-600 dark:border-sun-500/20 dark:bg-sun-500/10 dark:text-sun-300"
-                >
-                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <Notice tone="warning" icon={CircleAlert} alert>
                     Titik ini berada di luar batas wilayah yang dipilih.
                     Pastikan wilayah dan titik lokasi sudah sesuai.
-                </p>
+                </Notice>
             )}
 
             {geoError && (
-                <p
-                    role="alert"
-                    className="mt-3 flex items-start gap-2 text-xs text-red-600"
-                >
-                    <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <Notice tone="danger" icon={CircleAlert} alert>
                     {geoError}
-                </p>
+                </Notice>
             )}
 
-            {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
-        </section>
+            {error && (
+                <p
+                    role="alert"
+                    className="text-xs font-medium text-destructive-foreground"
+                >
+                    {error}
+                </p>
+            )}
+        </div>
     );
 }

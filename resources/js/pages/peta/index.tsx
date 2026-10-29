@@ -91,23 +91,17 @@ type Props = {
     auth?: {
         user?: User | null;
     };
-
     area: Area | null;
     areas: AreaOption[];
-
     boundary: MapBoundary | null;
-
     center: [number, number];
     zoom: number;
-
     reports: MapReport[];
     types: MapType[];
     zones: MapZone[];
     facilities: MapFacility[];
-
     contacts: Contact[];
     announcements: Announcement[];
-
     stats: Stats;
 };
 
@@ -141,7 +135,7 @@ const TYPE_ICON = {
     karhutla: Flame,
     longsor: Mountain,
     "pohon-tumbang": TreePine,
-};
+} as const;
 
 /* Warna ikon mengikuti palet logo */
 const toneClass: Record<Tone, string> = {
@@ -188,7 +182,6 @@ function useFakeLoading(ms = 700) {
 
     useEffect(() => {
         const timer = setTimeout(() => setLoading(false), ms);
-
         return () => clearTimeout(timer);
     }, [ms]);
 
@@ -204,7 +197,6 @@ function StatCardSkeleton() {
                     <div className="skeleton h-8 w-14" />
                     <div className="skeleton h-3 w-28" />
                 </div>
-
                 <div className="skeleton size-10 rounded-xl" />
             </div>
         </div>
@@ -220,12 +212,10 @@ function ListSkeleton({ rows = 3 }: { rows?: number }) {
                     className="flex items-center gap-3 px-4 py-4 md:px-5"
                 >
                     <div className="skeleton size-10 shrink-0 rounded-xl" />
-
                     <div className="flex-1 space-y-2">
                         <div className="skeleton h-4 w-2/3" />
                         <div className="skeleton h-3 w-1/2" />
                     </div>
-
                     <div className="skeleton h-6 w-14 rounded-full" />
                 </div>
             ))}
@@ -255,11 +245,9 @@ function StatCard({
                     <p className="truncate text-sm text-muted-foreground">
                         {title}
                     </p>
-
                     <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
                         {value}
                     </p>
-
                     <p className="mt-1 text-xs text-muted-foreground">
                         {description}
                     </p>
@@ -296,7 +284,6 @@ function PanelHeader({
                 >
                     <Icon className="size-4" />
                 </div>
-
                 <div>
                     <h2 className="font-semibold text-foreground">{title}</h2>
                     <p className="mt-0.5 text-xs text-muted-foreground">
@@ -304,7 +291,6 @@ function PanelHeader({
                     </p>
                 </div>
             </div>
-
             {action}
         </div>
     );
@@ -320,7 +306,6 @@ function SectionTitle({
     return (
         <div className="mb-3 flex items-start gap-3">
             <span className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
-
             <div>
                 <h2 className="font-semibold text-foreground">{title}</h2>
                 <p className="text-xs text-muted-foreground">{description}</p>
@@ -356,7 +341,6 @@ function LayerToggle({
                     </span>
                 )}
             </span>
-
             <input
                 type="checkbox"
                 checked={hasData && checked}
@@ -415,10 +399,7 @@ export default function PetaIndex({
 
     const filteredAreas = useMemo(() => {
         const keyword = trimmedQuery.toLowerCase();
-
-        if (!keyword) {
-            return [];
-        }
+        if (!keyword) return [];
 
         return areas
             .filter((item) =>
@@ -432,8 +413,7 @@ export default function PetaIndex({
     const areaNotFound = trimmedQuery !== "" && filteredAreas.length === 0;
 
     const visibleReports = useMemo(
-        () =>
-            reports.filter((report) => activeTypeIds.includes(report.type_id)),
+        () => reports.filter((report) => activeTypeIds.includes(report.type_id)),
         [reports, activeTypeIds],
     );
 
@@ -447,7 +427,6 @@ export default function PetaIndex({
                     const bTime = b.occurred_at
                         ? new Date(b.occurred_at).getTime()
                         : 0;
-
                     return bTime - aTime;
                 })
                 .slice(0, 5),
@@ -472,13 +451,10 @@ export default function PetaIndex({
 
     const changeArea = (slug: string) => {
         setQuery("");
-
         if (!slug) {
             router.get("/", {}, { preserveScroll: true });
-
             return;
         }
-
         router.get(`/wilayah/${slug}`, {}, { preserveScroll: true });
     };
 
@@ -582,10 +558,7 @@ export default function PetaIndex({
               ? petugasStats
               : wargaStats;
 
-    const statGridClass =
-        role === "warga"
-            ? "grid gap-3 sm:grid-cols-3"
-            : "grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
+    const statGridClass = "flex w-full flex-wrap items-stretch gap-3";
 
     const pageTitle =
         role === "admin"
@@ -605,7 +578,10 @@ export default function PetaIndex({
         <>
             <Head title="Peta Kejadian" />
 
-            <div className="relative min-h-screen overflow-hidden bg-background">
+            <div
+                dir="ltr"
+                className="relative min-h-screen overflow-hidden bg-background"
+            >
                 {/* Blob latar halaman */}
                 <div
                     aria-hidden
@@ -616,40 +592,37 @@ export default function PetaIndex({
                     <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15" />
                 </div>
 
-                <div className="relative mx-auto max-w-[1800px] space-y-6 p-4 md:p-6 lg:p-8">
+                <div className="relative mx-auto max-w-[1600px] space-y-6 p-4 md:p-6 lg:p-8">
                     {/* =====================================================
                         HEADER
                     ====================================================== */}
-                    <section className="relative animate-fade-in overflow-hidden rounded-3xl bg-linear-to-br from-navy-950 via-navy-900 to-navy-800 text-white shadow-xl shadow-navy-900/20">
-                        <div className="blob -top-20 -right-16 h-64 w-64 animate-blob bg-sun-400/30" />
-                        <div className="blob -bottom-24 left-1/3 h-64 w-64 animate-blob-slow bg-sea-400/25" />
-                        <div className="blob -bottom-14 -left-10 h-48 w-48 animate-blob bg-forest-500/25" />
+                    <section className="relative animate-fade-in overflow-hidden rounded-3xl border border-border bg-card/90 text-foreground shadow-sm backdrop-blur">
+                        <div className="blob -top-20 -right-16 h-64 w-64 animate-blob bg-sun-400/15" />
+                        <div className="blob -bottom-24 left-1/3 h-64 w-64 animate-blob-slow bg-sea-400/10" />
+                        <div className="blob -bottom-14 -left-10 h-48 w-48 animate-blob bg-forest-500/10" />
 
-                        <div className="relative flex flex-col justify-between gap-5 p-5 md:p-6 lg:flex-row lg:items-center">
+                        <div className="relative flex flex-col justify-between gap-5 p-5 md:p-6 lg:flex-row lg:items-center lg:p-7">
                             <div className="flex items-center gap-4">
-                                <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-sun-400 to-sun-600 text-navy-950 shadow-lg shadow-sun-500/30">
+                                <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-navy-600 to-sea-500 text-white shadow-md shadow-navy-500/20">
                                     <MapPin className="size-6" />
                                 </div>
-
                                 <div>
                                     <h1 className="text-xl font-bold tracking-tight md:text-2xl">
                                         {pageTitle}
                                     </h1>
-
-                                    <p className="mt-1 max-w-2xl text-sm text-navy-100/80">
+                                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                                         {pageDescription}
                                     </p>
                                 </div>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-forest-400 capitalize backdrop-blur">
+                                <span className="rounded-full border border-forest-200 bg-forest-50 px-3 py-1.5 text-xs font-semibold text-forest-700 capitalize dark:border-forest-500/30 dark:bg-forest-500/10 dark:text-forest-300">
                                     {role}
                                 </span>
-
                                 {area && (
-                                    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium text-navy-50 backdrop-blur">
-                                        <MapPin className="size-3.5 text-sun-300" />
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground backdrop-blur">
+                                        <MapPin className="size-3.5 text-sun-500" />
                                         {area.name}
                                     </span>
                                 )}
@@ -660,15 +633,28 @@ export default function PetaIndex({
                     {/* =====================================================
                         STATISTICS
                     ====================================================== */}
-                    <div className={statGridClass}>
+                    <div className={statGridClass} dir="ltr">
                         {loading
                             ? statCards.map((card) => (
-                                  <StatCardSkeleton key={card.title} />
+                                  <div
+                                      key={card.title}
+                                      className="min-w-0 flex-1 basis-[280px] sm:basis-[300px] xl:basis-0"
+                                  >
+                                      <StatCardSkeleton />
+                                  </div>
                               ))
                             : statCards.map((card, i) => (
-                                  <Reveal key={card.title} delay={i * 80}>
+                                  <div
+                                      key={card.title}
+                                      className="min-w-0 flex-1 basis-[280px] animate-fade-in-up sm:basis-[300px] xl:basis-0"
+                                      style={
+                                          {
+                                              animationDelay: `${i * 80}ms`,
+                                          } as CSSProperties
+                                      }
+                                  >
                                       <StatCard {...card} />
-                                  </Reveal>
+                                  </div>
                               ))}
                     </div>
 
@@ -695,7 +681,6 @@ export default function PetaIndex({
                                             <span className="min-w-0 truncate font-medium">
                                                 {area.name}
                                             </span>
-
                                             <button
                                                 type="button"
                                                 onClick={() => changeArea("")}
@@ -708,7 +693,6 @@ export default function PetaIndex({
 
                                     <div className="relative mt-3">
                                         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-
                                         <input
                                             type="search"
                                             value={query}
@@ -731,7 +715,6 @@ export default function PetaIndex({
                                             aria-label="Cari wilayah"
                                             className="h-10 w-full rounded-xl border border-border bg-background pr-9 pl-9 text-sm transition outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                                         />
-
                                         {query && (
                                             <button
                                                 type="button"
@@ -751,9 +734,7 @@ export default function PetaIndex({
                                                     <button
                                                         type="button"
                                                         onClick={() =>
-                                                            changeArea(
-                                                                item.slug,
-                                                            )
+                                                            changeArea(item.slug)
                                                         }
                                                         className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-navy-50 dark:hover:bg-navy-500/10"
                                                     >
@@ -829,9 +810,9 @@ export default function PetaIndex({
                                                 TYPE_ICON[
                                                     type.slug as keyof typeof TYPE_ICON
                                                 ] ?? AlertTriangle;
-
-                                            const active =
-                                                activeTypeIds.includes(type.id);
+                                            const active = activeTypeIds.includes(
+                                                type.id,
+                                            );
 
                                             return (
                                                 <button
@@ -856,11 +837,9 @@ export default function PetaIndex({
                                                     >
                                                         <Icon className="size-4" />
                                                     </span>
-
                                                     <span className="flex-1 text-sm font-medium">
                                                         {type.name}
                                                     </span>
-
                                                     <span
                                                         className={[
                                                             "flex size-5 items-center justify-center rounded-full border transition",
@@ -889,7 +868,6 @@ export default function PetaIndex({
                                         title="Tampilan Peta"
                                         description="Atur layer yang ingin ditampilkan."
                                     />
-
                                     <div className="mt-4 space-y-2">
                                         <LayerToggle
                                             label="Zona rawan"
@@ -897,7 +875,6 @@ export default function PetaIndex({
                                             checked={showZones}
                                             onChange={setShowZones}
                                         />
-
                                         <LayerToggle
                                             label="Fasilitas darurat"
                                             hasData={hasFacilities}
@@ -919,7 +896,6 @@ export default function PetaIndex({
                                             <span>Kelola Wilayah</span>
                                             <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
                                         </Link>
-
                                         <Link
                                             href="/laporan"
                                             className={adminLinkClass}
@@ -954,31 +930,26 @@ export default function PetaIndex({
                                             title="Kontak Darurat"
                                             description="Hubungi petugas terkait."
                                         />
-
                                         <div className="mt-4 space-y-2">
-                                            {contacts
-                                                .slice(0, 4)
-                                                .map((contact) => (
-                                                    <a
-                                                        key={contact.id}
-                                                        href={`tel:${contact.phone}`}
-                                                        className="block rounded-xl border border-border p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10"
-                                                    >
-                                                        <p className="text-sm font-semibold">
-                                                            {contact.name}
+                                            {contacts.slice(0, 4).map((contact) => (
+                                                <a
+                                                    key={contact.id}
+                                                    href={`tel:${contact.phone}`}
+                                                    className="block rounded-xl border border-border p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10"
+                                                >
+                                                    <p className="text-sm font-semibold">
+                                                        {contact.name}
+                                                    </p>
+                                                    {contact.role && (
+                                                        <p className="mt-0.5 text-xs text-muted-foreground">
+                                                            {contact.role}
                                                         </p>
-
-                                                        {contact.role && (
-                                                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                                                {contact.role}
-                                                            </p>
-                                                        )}
-
-                                                        <p className="mt-1 text-sm font-semibold text-navy-600 dark:text-navy-400">
-                                                            {contact.phone}
-                                                        </p>
-                                                    </a>
-                                                ))}
+                                                    )}
+                                                    <p className="mt-1 text-sm font-semibold text-navy-600 dark:text-navy-400">
+                                                        {contact.phone}
+                                                    </p>
+                                                </a>
+                                            ))}
                                         </div>
                                     </div>
                                 </Reveal>
@@ -990,18 +961,16 @@ export default function PetaIndex({
                         ================================================== */}
                         <Reveal delay={120} fill={false} plain>
                             <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                                <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
+                                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3.5">
                                     <div>
                                         <h2 className="text-sm font-semibold">
                                             Peta Kejadian
                                         </h2>
-
                                         <p className="text-xs text-muted-foreground">
                                             {visibleReports.length} kejadian
                                             ditampilkan
                                         </p>
                                     </div>
-
                                     <div className="flex items-center gap-2">
                                         <span className="size-2 animate-pulse-ring rounded-full bg-forest-500" />
                                         <span className="text-xs text-muted-foreground">
@@ -1055,7 +1024,6 @@ export default function PetaIndex({
                                         }
                                         description="Informasi kejadian yang tampil pada peta."
                                     />
-
                                     <Link
                                         href="/laporan"
                                         className="shrink-0 text-sm font-semibold text-navy-600 transition hover:text-navy-800 hover:underline dark:text-navy-400"
@@ -1078,7 +1046,7 @@ export default function PetaIndex({
                                                 <Link
                                                     key={report.id}
                                                     href={`/laporan/${report.id}`}
-                                                    className="group flex animate-fade-in-up items-center gap-3 px-4 py-4 transition-colors hover:bg-navy-50 md:px-5 dark:hover:bg-navy-500/10"
+                                                    className="group flex animate-fade-in-up items-center gap-3 border-l-2 border-transparent px-4 py-4 transition-all hover:border-navy-500 hover:bg-navy-50 md:px-5 dark:hover:border-navy-400 dark:hover:bg-navy-500/10"
                                                     style={
                                                         {
                                                             animationDelay: `${index * 60}ms`,
@@ -1095,12 +1063,10 @@ export default function PetaIndex({
                                                     >
                                                         <AlertTriangle className="size-5" />
                                                     </span>
-
                                                     <div className="min-w-0 flex-1">
                                                         <p className="truncate text-sm font-semibold">
                                                             {report.title}
                                                         </p>
-
                                                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                                                             {type?.name ??
                                                                 "Bencana"}{" "}
@@ -1109,7 +1075,6 @@ export default function PetaIndex({
                                                                 "Lokasi tidak tersedia"}
                                                         </p>
                                                     </div>
-
                                                     <span
                                                         className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
                                                             SEVERITY_CLASS[
@@ -1121,7 +1086,6 @@ export default function PetaIndex({
                                                             report.severity
                                                         ] ?? report.severity}
                                                     </span>
-
                                                     <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-all group-hover:translate-x-1 group-hover:text-navy-500" />
                                                 </Link>
                                             );
@@ -1141,7 +1105,6 @@ export default function PetaIndex({
                                 title="Informasi & Pengumuman"
                                 description="Informasi penting terkait kebencanaan."
                             />
-
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 {loading
                                     ? Array.from({
@@ -1165,15 +1128,13 @@ export default function PetaIndex({
                                               key={announcement.id}
                                               delay={i * 80}
                                           >
-                                              <div className="h-full rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40">
+                                              <div className="h-full rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-md hover:shadow-navy-500/10 dark:hover:border-navy-500/40">
                                                   <span className="inline-flex rounded-full bg-navy-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-navy-800 uppercase dark:bg-navy-500/15 dark:text-navy-200">
                                                       {announcement.level}
                                                   </span>
-
                                                   <h3 className="mt-3 font-semibold">
                                                       {announcement.title}
                                                   </h3>
-
                                                   <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
                                                       {announcement.body}
                                                   </p>

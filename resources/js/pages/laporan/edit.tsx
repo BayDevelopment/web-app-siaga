@@ -27,7 +27,7 @@ type Report = {
     address: string | null;
     severity: string;
     status: string;
-    occurred_at: string | null; // sudah berformat datetime-local dari server
+    occurred_at: string | null;
     photos: ReportPhoto[];
 };
 
@@ -37,8 +37,6 @@ type Props = {
     areas: AreaOption[];
     can?: { update_status?: boolean };
 };
-
-/* ---------- Helper animasi & skeleton ---------- */
 
 function Reveal({
     children,
@@ -60,8 +58,6 @@ function Reveal({
 }
 
 function useFakeLoading(ms = 500) {
-    // State form tetap ada di useForm milik halaman ini,
-    // jadi aman jika ReportForm baru ditampilkan setelah skeleton.
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -74,8 +70,8 @@ function useFakeLoading(ms = 500) {
 
 function FormSkeleton() {
     return (
-        <div className="space-y-6">
-            <div className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="space-y-5">
+            <div className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
                 <div className="skeleton h-5 w-44" />
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -100,7 +96,7 @@ function FormSkeleton() {
                 </div>
             </div>
 
-            <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
                 <div className="skeleton h-5 w-36" />
                 <div className="skeleton h-48 w-full" />
             </div>
@@ -112,8 +108,6 @@ function FormSkeleton() {
         </div>
     );
 }
-
-/* ---------- Halaman ---------- */
 
 export default function Edit({ report, types, areas, can }: Props) {
     const loading = useFakeLoading(500);
@@ -135,8 +129,6 @@ export default function Edit({ report, types, areas, can }: Props) {
     function submit(event: FormEvent) {
         event.preventDefault();
 
-        // PUT dengan file tidak terbaca PHP, jadi dikirim sebagai POST
-        // dengan _method=put (route-nya tetap Route::put).
         form.transform((data) => ({ ...data, _method: "put" }));
 
         form.post(`/laporan/${report.id}`, {
@@ -150,17 +142,16 @@ export default function Edit({ report, types, areas, can }: Props) {
             <Head title={`Edit laporan ${report.code}`} />
 
             <div className="relative min-h-screen overflow-hidden bg-background">
-                {/* Blob latar halaman */}
                 <div
                     aria-hidden
                     className="pointer-events-none absolute inset-0 overflow-hidden"
                 >
-                    <div className="blob -top-24 -left-24 h-80 w-80 animate-blob bg-navy-400/20" />
-                    <div className="blob top-1/3 -right-32 h-96 w-96 animate-blob-slow bg-sun-300/20" />
-                    <div className="blob -bottom-32 left-1/4 h-80 w-80 animate-blob bg-forest-400/15" />
+                    <div className="blob -top-24 -left-24 h-72 w-72 animate-blob bg-navy-400/10" />
+                    <div className="blob top-1/3 -right-32 h-80 w-80 animate-blob-slow bg-sun-300/10" />
+                    <div className="blob -bottom-32 left-1/4 h-72 w-72 animate-blob bg-forest-400/10" />
                 </div>
 
-                <div className="relative mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+                <div className="relative mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
                     <nav
                         aria-label="Breadcrumb"
                         className="flex animate-fade-in flex-wrap items-center gap-2 text-sm text-muted-foreground"
@@ -169,7 +160,7 @@ export default function Edit({ report, types, areas, can }: Props) {
                             href="/laporan"
                             className="group inline-flex items-center gap-1.5 transition hover:text-foreground"
                         >
-                            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
                             Laporan
                         </Link>
                         <span aria-hidden="true">/</span>
@@ -185,60 +176,76 @@ export default function Edit({ report, types, areas, can }: Props) {
                         </span>
                     </nav>
 
-                    {/* Header */}
-                    <header className="relative animate-fade-in overflow-hidden rounded-3xl bg-linear-to-br from-navy-950 via-navy-900 to-navy-800 p-5 text-white shadow-xl shadow-navy-900/20 md:p-6">
-                        <div className="blob -top-16 -right-12 h-56 w-56 animate-blob bg-sun-400/30" />
-                        <div className="blob -bottom-20 left-1/3 h-56 w-56 animate-blob-slow bg-sea-400/25" />
-                        <div className="blob -bottom-12 -left-8 h-44 w-44 animate-blob bg-forest-500/25" />
+                    <header className="relative animate-fade-in overflow-hidden rounded-2xl border border-border bg-card p-5 text-foreground shadow-sm md:p-6">
+                        <div className="blob -top-16 -right-12 h-48 w-48 animate-blob bg-sun-400/10" />
+                        <div className="blob -bottom-20 left-1/3 h-48 w-48 animate-blob-slow bg-sea-400/10" />
 
-                        <div className="relative flex flex-wrap items-center gap-3">
-                            <h1 className="text-xl font-bold tracking-tight md:text-2xl">
-                                Edit laporan
-                            </h1>
-                            <StatusBadge status={report.status} />
-                            <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-xs font-semibold text-navy-50 backdrop-blur">
-                                {report.code}
-                            </span>
+                        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                    Manajemen laporan
+                                </div>
+                                <h1 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">
+                                    Edit laporan
+                                </h1>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Perbarui informasi kejadian dan simpan perubahan laporan.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <StatusBadge status={report.status} />
+                                <span className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm">
+                                    {report.code}
+                                </span>
+                            </div>
                         </div>
                     </header>
 
                     {report.status !== "pending" && (
                         <Reveal delay={60}>
-                            <div className="flex gap-3 rounded-2xl border border-sun-300/60 bg-sun-50 p-4 text-sun-600 dark:border-sun-500/20 dark:bg-sun-500/10 dark:text-sun-300">
-                                <Info className="mt-0.5 h-5 w-5 shrink-0" />
-                                <p className="text-sm leading-6">
-                                    Laporan ini sudah diverifikasi. Perubahan
-                                    yang Anda simpan langsung tampil di halaman
-                                    publik.
-                                </p>
+                            <div className="flex items-start gap-3 rounded-2xl border border-sun-300/60 bg-sun-50/80 p-4 text-sun-700 shadow-sm dark:border-sun-500/20 dark:bg-sun-500/10 dark:text-sun-300">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sun-100 text-sun-700 dark:bg-sun-500/15 dark:text-sun-300">
+                                    <Info className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-semibold">Laporan sudah diverifikasi</p>
+                                    <p className="mt-0.5 text-sm leading-6">
+                                        Perubahan yang Anda simpan akan langsung tampil
+                                        di halaman publik.
+                                    </p>
+                                </div>
                             </div>
                         </Reveal>
                     )}
 
-                    {/* Verifikasi & status: hanya admin/petugas */}
                     {can?.update_status && (
                         <Reveal delay={90}>
-                            <StatusPanel
-                                reportId={report.id}
-                                status={report.status}
-                            />
+                            <div className="rounded-2xl border border-border bg-card shadow-sm">
+                                <StatusPanel
+                                    reportId={report.id}
+                                    status={report.status}
+                                />
+                            </div>
                         </Reveal>
                     )}
 
                     {loading ? (
                         <FormSkeleton />
                     ) : (
-                        <Reveal delay={120}>
-                            <ReportForm
-                                form={form}
-                                types={types}
-                                areas={areas}
-                                existingPhotos={report.photos}
-                                onSubmit={submit}
-                                cancelHref={`/laporan/${report.id}`}
-                                submitLabel="Simpan perubahan"
-                                submitIcon={<Save className="h-4 w-4" />}
-                            />
+                        <Reveal delay={120} className="min-w-0">
+                            <div className="min-w-0">
+                                <ReportForm
+                                    form={form}
+                                    types={types}
+                                    areas={areas}
+                                    existingPhotos={report.photos}
+                                    onSubmit={submit}
+                                    cancelHref={`/laporan/${report.id}`}
+                                    submitLabel="Simpan perubahan"
+                                    submitIcon={<Save className="h-4 w-4" />}
+                                />
+                            </div>
                         </Reveal>
                     )}
                 </div>

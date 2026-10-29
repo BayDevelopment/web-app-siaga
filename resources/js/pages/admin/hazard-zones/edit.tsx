@@ -1,17 +1,18 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from "@inertiajs/react";
 import {
     ArrowLeft,
     Info,
     MapPin,
     Save,
     TriangleAlert,
-} from 'lucide-react';
-import { useMemo } from 'react';
-import type { FormEvent } from 'react';
-import { toast } from 'sonner';
+} from "lucide-react";
+import { useMemo, type FormEvent, type ReactNode } from "react";
+import { toast } from "sonner";
 
-import { getMapIcon } from '@/components/map/map-icons';
-import PointPicker, { type PointGeo } from '@/components/map/point-picker';
+import { getMapIcon } from "@/components/map/map-icons";
+import PointPicker, { type PointGeo } from "@/components/point-picker-area-map";
+
+/* ---------- Tipe ---------- */
 
 type DisasterType = {
     id: number;
@@ -26,6 +27,9 @@ type Area = {
     name: string;
     type: string;
     parent_id: number | null;
+    center_lat?: number | string | null;
+    center_lng?: number | string | null;
+    boundary_geojson?: unknown;
 };
 
 type ZoneData = {
@@ -33,7 +37,7 @@ type ZoneData = {
     disaster_type_id: number | null;
     area_id: number | null;
     name: string;
-    level: 'low' | 'medium' | 'high';
+    level: "low" | "medium" | "high";
     description: string | null;
     radius_m: number | null;
     geojson: { type: string; coordinates: unknown } | null;
@@ -45,7 +49,7 @@ type Props = {
     areas: Area[];
 };
 
-type Level = 'low' | 'medium' | 'high';
+type Level = "low" | "medium" | "high";
 
 type FormData = {
     disaster_type_id: string;
@@ -57,6 +61,8 @@ type FormData = {
     radius_m: string;
 };
 
+/* ---------- Konstanta ---------- */
+
 const LEVELS: {
     key: Level;
     label: string;
@@ -65,32 +71,36 @@ const LEVELS: {
     dot: string;
 }[] = [
     {
-        key: 'low',
-        label: 'Rendah',
-        hint: 'Jarang terjadi',
-        active: 'border-forest-500 bg-forest-50 dark:bg-forest-500/10',
-        dot: 'bg-forest-500',
+        key: "low",
+        label: "Rendah",
+        hint: "Jarang terjadi",
+        active: "border-forest-500 bg-forest-50 dark:bg-forest-500/10",
+        dot: "bg-forest-500",
     },
     {
-        key: 'medium',
-        label: 'Sedang',
-        hint: 'Kadang terjadi',
-        active: 'border-sun-500 bg-sun-50 dark:bg-sun-500/10',
-        dot: 'bg-sun-500',
+        key: "medium",
+        label: "Sedang",
+        hint: "Kadang terjadi",
+        active: "border-sun-500 bg-sun-50 dark:bg-sun-500/10",
+        dot: "bg-sun-500",
     },
     {
-        key: 'high',
-        label: 'Tinggi',
-        hint: 'Sering terjadi',
-        active: 'border-red-500 bg-red-50 dark:bg-red-500/10',
-        dot: 'bg-red-500',
+        key: "high",
+        label: "Tinggi",
+        hint: "Sering terjadi",
+        active: "border-red-500 bg-red-50 dark:bg-red-500/10",
+        dot: "bg-red-500",
     },
 ];
 
 const RADIUS_PRESETS = [50, 100, 250, 500, 1000];
 
+const FALLBACK_COLOR = "#64748b";
+
 const inputClass =
-    'w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-navy-400 focus:ring-4 focus:ring-ring/20';
+    "w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground focus:border-sea-400 focus:ring-2 focus:ring-sea-500/15 dark:focus:border-sea-500 dark:focus:ring-sea-400/20";
+
+/* ---------- Komponen UI ---------- */
 
 function Field({
     label,
@@ -105,7 +115,7 @@ function Field({
     required?: boolean;
     hint?: string;
     error?: string;
-    children: React.ReactNode;
+    children: ReactNode;
 }) {
     return (
         <div className="space-y-2">
@@ -116,12 +126,22 @@ function Field({
             {hint && !error && (
                 <p className="text-xs text-muted-foreground">{hint}</p>
             )}
-            {error && <p className="text-xs text-red-600">{error}</p>}
+            {error && (
+                <p className="text-xs text-red-600 dark:text-red-400">
+                    {error}
+                </p>
+            )}
         </div>
     );
 }
 
-function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
+function SectionTitle({
+    title,
+    subtitle,
+}: {
+    title: string;
+    subtitle: string;
+}) {
     return (
         <div className="mb-5 flex items-start gap-3">
             <span className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
@@ -133,20 +153,24 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) 
     );
 }
 
+/* ---------- Halaman ---------- */
+
 export default function HazardZoneEdit({ zone, types, areas }: Props) {
-    const isLegacyShape = !!zone.geojson && zone.geojson.type !== 'Point';
+    const isLegacyShape = !!zone.geojson && zone.geojson.type !== "Point";
 
     const { data, setData, put, processing, errors } = useForm<FormData>({
         disaster_type_id: zone.disaster_type_id
             ? String(zone.disaster_type_id)
-            : '',
-        area_id: zone.area_id ? String(zone.area_id) : '',
+            : "",
+        area_id: zone.area_id ? String(zone.area_id) : "",
         name: zone.name,
         level: zone.level,
-        description: zone.description ?? '',
+        description: zone.description ?? "",
         geojson:
-            zone.geojson?.type === 'Point' ? JSON.stringify(zone.geojson) : '',
-        radius_m: zone.radius_m ? String(zone.radius_m) : '',
+            zone.geojson?.type === "Point"
+                ? JSON.stringify(zone.geojson)
+                : "",
+        radius_m: zone.radius_m ? String(zone.radius_m) : "",
     });
 
     const areaOptions = useMemo(
@@ -154,9 +178,9 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
             areas.map((area) => ({
                 ...area,
                 label:
-                    area.type === 'rw'
+                    area.type === "rw"
                         ? `RW — ${area.name}`
-                        : area.type === 'rt'
+                        : area.type === "rt"
                           ? `RT — ${area.name}`
                           : area.name,
             })),
@@ -168,48 +192,48 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
         [types, data.disaster_type_id],
     );
 
-    const markerColor = selectedType?.color ?? '#64748b';
+    const markerColor = selectedType?.color ?? FALLBACK_COLOR;
     const PreviewIcon = getMapIcon(selectedType?.icon);
 
     const point: PointGeo | null = useMemo(() => {
-        if (!data.geojson) {
-            return null;
-        }
+        if (!data.geojson) return null;
 
         try {
             const parsed = JSON.parse(data.geojson) as PointGeo;
-
-            return parsed.type === 'Point' ? parsed : null;
+            return parsed.type === "Point" ? parsed : null;
         } catch {
             return null;
         }
     }, [data.geojson]);
 
-    const radius = data.radius_m ? Number(data.radius_m) : null;
+    const latitude = point?.coordinates?.[1] ?? "";
+    const longitude = point?.coordinates?.[0] ?? "";
 
     const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
         if (!data.name.trim()) {
-            toast.error('Nama zona wajib diisi.');
+            toast.error("Nama zona wajib diisi.");
             return;
         }
 
         if (!data.disaster_type_id) {
-            toast.error('Silakan pilih jenis bencana.');
+            toast.error("Silakan pilih jenis bencana.");
             return;
         }
 
         if (!point) {
-            toast.warning('Tentukan titik lokasi pada peta terlebih dahulu.');
+            toast.warning(
+                "Tentukan titik lokasi pada peta terlebih dahulu.",
+            );
             return;
         }
 
         put(`/admin/hazard-zones/${zone.id}`, {
-            onSuccess: () => toast.success('Zona rawan berhasil diperbarui.'),
+            onSuccess: () => toast.success("Zona rawan berhasil diperbarui."),
             onError: () =>
                 toast.error(
-                    'Zona rawan gagal diperbarui. Periksa data yang diisi.',
+                    "Zona rawan gagal diperbarui. Periksa data yang diisi.",
                 ),
         });
     };
@@ -218,31 +242,34 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
         <>
             <Head title="Edit Zona Rawan" />
 
-            <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-                {/* ===== Hero ===== */}
-                <div className="animate-fade-in relative overflow-hidden rounded-3xl bg-linear-to-br from-navy-900 via-navy-800 to-navy-600 p-5 text-white shadow-lg shadow-navy-900/20 md:p-6">
-                    <div className="blob animate-blob -top-14 -right-8 size-52 bg-sea-400/40" />
-                    <div className="blob animate-blob-slow -bottom-16 left-1/3 size-44 bg-sun-400/25" />
+            <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-hidden p-4 md:p-6">
+                {/* =====================================================
+                    HERO
+                ====================================================== */}
+                <div className="animate-fade-in relative overflow-hidden rounded-3xl border border-border bg-card p-5 text-foreground shadow-sm md:p-6">
+                    <div className="blob -top-16 -right-10 size-48 animate-blob bg-sea-400/10 dark:bg-sea-500/10" />
+                    <div className="blob -bottom-20 left-1/3 size-44 animate-blob-slow bg-sun-400/10 dark:bg-sun-500/10" />
 
                     <div className="relative flex items-center gap-4">
                         <Link
                             href="/admin/hazard-zones"
                             aria-label="Kembali"
-                            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
+                            className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground dark:hover:bg-muted/80"
                         >
                             <ArrowLeft className="size-4" />
                         </Link>
 
-                        <span className="animate-float hidden size-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20 backdrop-blur sm:flex">
-                            <TriangleAlert className="size-6 text-sun-300" />
+                        <span className="hidden size-12 shrink-0 items-center justify-center rounded-2xl bg-sun-100 text-sun-600 ring-1 ring-sun-200 dark:bg-sun-500/10 dark:text-sun-400 dark:ring-sun-500/20 sm:flex">
+                            <TriangleAlert className="size-6" />
                         </span>
 
                         <div className="min-w-0">
                             <h1 className="text-lg font-bold md:text-xl">
                                 Edit Zona Rawan
                             </h1>
-                            <p className="text-sm text-white/70">
-                                Perbarui data titik rawan &quot;{zone.name}&quot;.
+                            <p className="text-sm text-muted-foreground">
+                                Perbarui data titik rawan &quot;{zone.name}
+                                &quot;.
                             </p>
                         </div>
                     </div>
@@ -250,11 +277,14 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
 
                 <form
                     onSubmit={handleSubmit}
-                    className="grid gap-6 lg:grid-cols-3"
+                    className="grid min-w-0 gap-6 lg:grid-cols-3"
                 >
-                    {/* ===== Kolom utama ===== */}
-                    <div className="space-y-6 lg:col-span-2">
-                        <section className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm md:p-6">
+                    {/* =================================================
+                        KOLOM UTAMA
+                    ================================================== */}
+                    <div className="min-w-0 space-y-6 lg:col-span-2">
+                        {/* INFORMASI ZONA */}
+                        <section className="animate-fade-in-up min-w-0 rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-200 hover:shadow-md md:p-6">
                             <SectionTitle
                                 title="Informasi Zona"
                                 subtitle="Data dasar titik rawan."
@@ -272,7 +302,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                         type="text"
                                         value={data.name}
                                         onChange={(e) =>
-                                            setData('name', e.target.value)
+                                            setData("name", e.target.value)
                                         }
                                         placeholder="Contoh: Titik Rawan Banjir Jembatan Kali"
                                         className={inputClass}
@@ -291,7 +321,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                             value={data.disaster_type_id}
                                             onChange={(e) =>
                                                 setData(
-                                                    'disaster_type_id',
+                                                    "disaster_type_id",
                                                     e.target.value,
                                                 )
                                             }
@@ -321,7 +351,10 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                             id="area_id"
                                             value={data.area_id}
                                             onChange={(e) =>
-                                                setData('area_id', e.target.value)
+                                                setData(
+                                                    "area_id",
+                                                    e.target.value,
+                                                )
                                             }
                                             className={inputClass}
                                         >
@@ -355,7 +388,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                                     type="button"
                                                     onClick={() =>
                                                         setData(
-                                                            'level',
+                                                            "level",
                                                             level.key,
                                                         )
                                                     }
@@ -363,7 +396,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                                     className={`rounded-xl border-2 p-3 text-left transition hover:-translate-y-0.5 ${
                                                         selected
                                                             ? level.active
-                                                            : 'border-border bg-background hover:bg-muted/50'
+                                                            : "border-border bg-background hover:border-navy-200 hover:bg-muted/50 dark:hover:border-navy-500/30"
                                                     }`}
                                                 >
                                                     <span className="flex items-center gap-2 text-sm font-semibold">
@@ -392,7 +425,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                         value={data.description}
                                         onChange={(e) =>
                                             setData(
-                                                'description',
+                                                "description",
                                                 e.target.value,
                                             )
                                         }
@@ -403,14 +436,15 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                             </div>
                         </section>
 
-                        <section className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm [animation-delay:100ms] md:p-6">
+                        {/* LOKASI DI PETA — satu card, parent yang bungkus */}
+                        <section className="animate-fade-in-up min-w-0 rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-200 [animation-delay:100ms] hover:shadow-md md:p-6">
                             <SectionTitle
                                 title="Lokasi di Peta"
                                 subtitle="Klik peta atau gunakan lokasi saya."
                             />
 
                             {isLegacyShape && !point && (
-                                <div className="mb-4 rounded-xl border border-sun-400/50 bg-sun-50 p-3 text-xs text-sun-600 dark:bg-sun-500/10 dark:text-sun-400">
+                                <div className="mb-4 rounded-xl border border-sun-400/50 bg-sun-50 p-3 text-xs text-sun-600 dark:border-sun-500/30 dark:bg-sun-500/10 dark:text-sun-300">
                                     Zona ini masih berbentuk polygon (data
                                     lama). Tentukan satu titik baru pada peta
                                     untuk menggantinya.
@@ -418,23 +452,18 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                             )}
 
                             <PointPicker
-                                value={point}
+                                areas={areaOptions}
+                                areaId={data.area_id}
+                                latitude={latitude}
+                                longitude={longitude}
                                 onChange={(geo) =>
                                     setData(
-                                        'geojson',
-                                        geo ? JSON.stringify(geo) : '',
+                                        "geojson",
+                                        geo ? JSON.stringify(geo) : "",
                                     )
                                 }
-                                color={markerColor}
-                                iconKey={selectedType?.icon}
-                                radius={radius}
+                                error={errors.geojson}
                             />
-
-                            {errors.geojson && (
-                                <p className="mt-3 text-xs text-red-600">
-                                    {errors.geojson}
-                                </p>
-                            )}
 
                             <div className="mt-5 space-y-3 border-t border-border pt-5">
                                 <Field
@@ -450,7 +479,10 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                         max={50000}
                                         value={data.radius_m}
                                         onChange={(e) =>
-                                            setData('radius_m', e.target.value)
+                                            setData(
+                                                "radius_m",
+                                                e.target.value,
+                                            )
                                         }
                                         placeholder="Contoh: 250"
                                         className={inputClass}
@@ -464,14 +496,14 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                             type="button"
                                             onClick={() =>
                                                 setData(
-                                                    'radius_m',
+                                                    "radius_m",
                                                     String(value),
                                                 )
                                             }
                                             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                                                 data.radius_m === String(value)
-                                                    ? 'bg-navy-500 text-white'
-                                                    : 'bg-muted text-muted-foreground hover:text-foreground'
+                                                    ? "bg-navy-600 text-white shadow-sm dark:bg-navy-400 dark:text-navy-950"
+                                                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                                             }`}
                                         >
                                             {value >= 1000
@@ -484,7 +516,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                         <button
                                             type="button"
                                             onClick={() =>
-                                                setData('radius_m', '')
+                                                setData("radius_m", "")
                                             }
                                             className="rounded-lg px-3 py-1.5 text-xs font-semibold text-muted-foreground underline"
                                         >
@@ -496,16 +528,18 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                         </section>
                     </div>
 
-                    {/* ===== Sidebar ===== */}
-                    <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-                        <aside className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm [animation-delay:150ms]">
+                    {/* =================================================
+                        SIDEBAR
+                    ================================================== */}
+                    <div className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start">
+                        <aside className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-200 [animation-delay:150ms] hover:shadow-md">
                             <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                                 Tampilan di peta
                             </p>
 
                             <div className="mt-4 flex items-center gap-3 rounded-xl border border-border p-3">
                                 <span
-                                    className="flex size-11 shrink-0 items-center justify-center rounded-full border-[3px] border-white text-white shadow-lg transition-colors"
+                                    className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-background text-white shadow-sm transition-colors"
                                     style={{ backgroundColor: markerColor }}
                                 >
                                     <PreviewIcon className="size-5" />
@@ -513,11 +547,11 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
 
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-semibold">
-                                        {data.name || 'Nama zona'}
+                                        {data.name || "Nama zona"}
                                     </p>
                                     <p className="truncate text-xs text-muted-foreground">
                                         {selectedType?.name ??
-                                            'Pilih jenis bencana'}
+                                            "Pilih jenis bencana"}
                                     </p>
                                 </div>
                             </div>
@@ -531,29 +565,31 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
                                 <button
                                     type="submit"
                                     disabled={processing}
-                                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-sun-400 to-sun-500 px-4 py-3 text-sm font-semibold text-navy-950 shadow-md shadow-sun-500/30 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sun-500 px-4 py-3 text-sm font-semibold text-navy-950 shadow-sm shadow-sun-500/20 transition hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:bg-sun-500 disabled:hover:shadow-sm dark:bg-sun-400 dark:hover:bg-sun-300"
                                 >
                                     <Save className="size-4" />
-                                    {processing ? 'Menyimpan...' : 'Simpan Perubahan'}
+                                    {processing
+                                        ? "Menyimpan..."
+                                        : "Simpan Perubahan"}
                                 </button>
 
                                 <Link
                                     href="/admin/hazard-zones"
-                                    className="inline-flex w-full items-center justify-center rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition hover:bg-muted"
+                                    className="inline-flex w-full items-center justify-center rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition hover:bg-muted dark:hover:bg-muted/80"
                                 >
                                     Batal
                                 </Link>
                             </div>
                         </aside>
 
-                        <div className="animate-fade-in-up rounded-2xl border border-navy-200 bg-navy-50 p-5 [animation-delay:200ms] dark:border-navy-500/30 dark:bg-navy-500/10">
+                        <div className="animate-fade-in-up rounded-2xl border border-sea-200 bg-sea-50 p-5 [animation-delay:200ms] dark:border-sea-500/30 dark:bg-sea-500/10">
                             <div className="flex gap-3">
-                                <Info className="mt-0.5 size-5 shrink-0 text-navy-500" />
+                                <Info className="mt-0.5 size-5 shrink-0 text-sea-600 dark:text-sea-400" />
                                 <div>
-                                    <h3 className="text-sm font-semibold text-navy-800 dark:text-navy-200">
+                                    <h3 className="text-sm font-semibold text-sea-800 dark:text-sea-200">
                                         Titik, bukan polygon
                                     </h3>
-                                    <p className="mt-1 text-xs leading-5 text-navy-800/80 dark:text-navy-200/80">
+                                    <p className="mt-1 text-xs leading-5 text-sea-800/80 dark:text-sea-200/80">
                                         Cukup satu titik. Tambahkan radius bila
                                         area terdampak perlu terlihat sebagai
                                         lingkaran. Batas wilayah tetap memakai
@@ -575,5 +611,7 @@ export default function HazardZoneEdit({ zone, types, areas }: Props) {
 }
 
 HazardZoneEdit.layout = {
-    breadcrumbs: [{ title: 'Zona Rawan', href: '/admin/hazard-zones' }],
+    breadcrumbs: [
+        { title: "Zona Rawan", href: "/admin/hazard-zones" },
+    ],
 };
