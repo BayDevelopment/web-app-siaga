@@ -10,9 +10,11 @@ import {
     MapPin,
     Mountain,
     ShieldAlert,
+    Search,
     Siren,
     TreePine,
     Waves,
+    X,
 } from "lucide-react";
 import {
     useEffect,
@@ -30,6 +32,8 @@ import DisasterMap, {
     type MapType,
     type MapZone,
 } from "@/components/map/disaster-map";
+
+/* ---------- Tipe ---------- */
 
 type Role = "admin" | "petugas" | "warga";
 type Tone = "navy" | "sea" | "forest" | "sun" | "danger";
@@ -84,8 +88,8 @@ type Announcement = {
 };
 
 type Props = {
-    auth: {
-        user: User;
+    auth?: {
+        user?: User | null;
     };
 
     area: Area | null;
@@ -106,6 +110,16 @@ type Props = {
 
     stats: Stats;
 };
+
+type StatCardData = {
+    title: string;
+    value: number | string;
+    description: string;
+    icon: ElementType;
+    tone: Tone;
+};
+
+/* ---------- Konstanta ---------- */
 
 const SEVERITY_LABEL: Record<string, string> = {
     low: "Ringan",
@@ -137,6 +151,9 @@ const toneClass: Record<Tone, string> = {
     sun: "bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300",
     danger: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
 };
+
+const adminLinkClass =
+    "group flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:shadow-md dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10";
 
 /* ---------- Helper animasi & skeleton ---------- */
 
@@ -170,8 +187,9 @@ function useFakeLoading(ms = 700) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const t = setTimeout(() => setLoading(false), ms);
-        return () => clearTimeout(t);
+        const timer = setTimeout(() => setLoading(false), ms);
+
+        return () => clearTimeout(timer);
     }, [ms]);
 
     return loading;
@@ -186,6 +204,7 @@ function StatCardSkeleton() {
                     <div className="skeleton h-8 w-14" />
                     <div className="skeleton h-3 w-28" />
                 </div>
+
                 <div className="skeleton size-10 rounded-xl" />
             </div>
         </div>
@@ -201,10 +220,12 @@ function ListSkeleton({ rows = 3 }: { rows?: number }) {
                     className="flex items-center gap-3 px-4 py-4 md:px-5"
                 >
                     <div className="skeleton size-10 shrink-0 rounded-xl" />
+
                     <div className="flex-1 space-y-2">
                         <div className="skeleton h-4 w-2/3" />
                         <div className="skeleton h-3 w-1/2" />
                     </div>
+
                     <div className="skeleton h-6 w-14 rounded-full" />
                 </div>
             ))}
@@ -299,6 +320,7 @@ function SectionTitle({
     return (
         <div className="mb-3 flex items-start gap-3">
             <span className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
+
             <div>
                 <h2 className="font-semibold text-foreground">{title}</h2>
                 <p className="text-xs text-muted-foreground">{description}</p>
@@ -346,8 +368,7 @@ function LayerToggle({
     );
 }
 
-const adminLinkClass =
-    "group flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:shadow-md dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10";
+/* ---------- Halaman ---------- */
 
 export default function PetaIndex({
     auth,
@@ -364,7 +385,9 @@ export default function PetaIndex({
     announcements,
     stats,
 }: Props) {
-    const role = auth.user.role;
+    // Halaman peta bersifat public, sehingga auth/user bisa null saat guest.
+    // Guest menggunakan role warga hanya untuk kebutuhan tampilan UI.
+    const role: Role = auth?.user?.role ?? "warga";
     const loading = useFakeLoading(700);
 
     const [activeTypeIds, setActiveTypeIds] = useState<number[]>(
@@ -386,7 +409,27 @@ export default function PetaIndex({
         setShowFacilities(hasFacilities);
     }, [hasFacilities]);
 
-    const selectedArea = area?.slug ?? "";
+    // Pencarian wilayah
+    const [query, setQuery] = useState("");
+    const trimmedQuery = query.trim();
+
+    const filteredAreas = useMemo(() => {
+        const keyword = trimmedQuery.toLowerCase();
+
+        if (!keyword) {
+            return [];
+        }
+
+        return areas
+            .filter((item) =>
+                `${item.label} ${item.name} ${item.parent_name ?? ""}`
+                    .toLowerCase()
+                    .includes(keyword),
+            )
+            .slice(0, 8);
+    }, [areas, trimmedQuery]);
+
+    const areaNotFound = trimmedQuery !== "" && filteredAreas.length === 0;
 
     const visibleReports = useMemo(
         () =>
@@ -401,7 +444,6 @@ export default function PetaIndex({
                     const aTime = a.occurred_at
                         ? new Date(a.occurred_at).getTime()
                         : 0;
-
                     const bTime = b.occurred_at
                         ? new Date(b.occurred_at).getTime()
                         : 0;
@@ -420,15 +462,6 @@ export default function PetaIndex({
         );
     };
 
-    const changeArea = (slug: string) => {
-        if (!slug) {
-            router.get("/peta");
-            return;
-        }
-
-        router.get(`/peta/${slug}`);
-    };
-
     const selectAllTypes = () => {
         setActiveTypeIds(types.map((type) => type.id));
     };
@@ -437,112 +470,136 @@ export default function PetaIndex({
         setActiveTypeIds([]);
     };
 
+    const changeArea = (slug: string) => {
+        setQuery("");
+
+        if (!slug) {
+            router.get("/", {}, { preserveScroll: true });
+
+            return;
+        }
+
+        router.get(`/wilayah/${slug}`, {}, { preserveScroll: true });
+    };
+
     const allTypesActive =
         types.length > 0 && activeTypeIds.length === types.length;
 
-    /* Statistik per role dalam satu array */
-    const statCards: {
-        title: string;
-        value: number | string;
-        description: string;
-        icon: ElementType;
-        tone: Tone;
-    }[] =
+    /* Statistik per role */
+    const adminStats: StatCardData[] = [
+        {
+            title: "Total Laporan",
+            value: stats.total_reports,
+            description: "Laporan aktif",
+            icon: BarChart3,
+            tone: "navy",
+        },
+        {
+            title: "Terverifikasi",
+            value: stats.verified_reports,
+            description: "Sudah diverifikasi",
+            icon: CheckCircle2,
+            tone: "sea",
+        },
+        {
+            title: "Sedang Ditangani",
+            value: stats.handling_reports,
+            description: "Dalam penanganan",
+            icon: Siren,
+            tone: "sun",
+        },
+        {
+            title: "Wilayah",
+            value: stats.total_areas,
+            description: "Wilayah aktif",
+            icon: Building2,
+            tone: "forest",
+        },
+    ];
+
+    const petugasStats: StatCardData[] = [
+        {
+            title: "Kejadian Aktif",
+            value: stats.active_reports,
+            description: "Kejadian aktif",
+            icon: AlertTriangle,
+            tone: "navy",
+        },
+        {
+            title: "Sedang Ditangani",
+            value: stats.handling_reports,
+            description: "Dalam penanganan",
+            icon: Siren,
+            tone: "sun",
+        },
+        {
+            title: "Prioritas Tinggi",
+            value: stats.high_reports,
+            description: "Severity berat",
+            icon: ShieldAlert,
+            tone: "sea",
+        },
+        {
+            title: "Kritis",
+            value: stats.critical_reports,
+            description: "Prioritas utama",
+            icon: CircleAlert,
+            tone: "danger",
+        },
+    ];
+
+    const wargaStats: StatCardData[] = [
+        {
+            title: "Kejadian Aktif",
+            value: stats.active_reports,
+            description: "Informasi terkini",
+            icon: AlertTriangle,
+            tone: "navy",
+        },
+        {
+            title: "Zona Rawan",
+            value: zones.length,
+            description: hasZones ? "Zona pada peta" : "Belum ada zona",
+            icon: ShieldAlert,
+            tone: "sun",
+        },
+        {
+            title: "Fasilitas",
+            value: stats.total_facilities,
+            description:
+                stats.total_facilities > 0
+                    ? "Fasilitas darurat"
+                    : "Belum ada fasilitas",
+            icon: Building2,
+            tone: "forest",
+        },
+    ];
+
+    const statCards =
         role === "admin"
-            ? [
-                  {
-                      title: "Total Laporan",
-                      value: stats.total_reports,
-                      description: "Laporan aktif",
-                      icon: BarChart3,
-                      tone: "navy",
-                  },
-                  {
-                      title: "Terverifikasi",
-                      value: stats.verified_reports,
-                      description: "Sudah diverifikasi",
-                      icon: CheckCircle2,
-                      tone: "sea",
-                  },
-                  {
-                      title: "Sedang Ditangani",
-                      value: stats.handling_reports,
-                      description: "Dalam penanganan",
-                      icon: Siren,
-                      tone: "sun",
-                  },
-                  {
-                      title: "Wilayah",
-                      value: stats.total_areas,
-                      description: "Wilayah aktif",
-                      icon: Building2,
-                      tone: "forest",
-                  },
-              ]
+            ? adminStats
             : role === "petugas"
-              ? [
-                    {
-                        title: "Kejadian Aktif",
-                        value: stats.active_reports,
-                        description: "Kejadian aktif",
-                        icon: AlertTriangle,
-                        tone: "navy",
-                    },
-                    {
-                        title: "Sedang Ditangani",
-                        value: stats.handling_reports,
-                        description: "Dalam penanganan",
-                        icon: Siren,
-                        tone: "sun",
-                    },
-                    {
-                        title: "Prioritas Tinggi",
-                        value: stats.high_reports,
-                        description: "Severity berat",
-                        icon: ShieldAlert,
-                        tone: "sea",
-                    },
-                    {
-                        title: "Kritis",
-                        value: stats.critical_reports,
-                        description: "Prioritas utama",
-                        icon: CircleAlert,
-                        tone: "danger",
-                    },
-                ]
-              : [
-                    {
-                        title: "Kejadian Aktif",
-                        value: stats.active_reports,
-                        description: "Informasi terkini",
-                        icon: AlertTriangle,
-                        tone: "navy",
-                    },
-                    {
-                        title: "Zona Rawan",
-                        value: zones.length,
-                        description: hasZones
-                            ? "Zona pada peta"
-                            : "Belum ada zona",
-                        icon: ShieldAlert,
-                        tone: "sun",
-                    },
-                    {
-                        title: "Fasilitas",
-                        value: stats.total_facilities,
-                        description:
-                            stats.total_facilities > 0
-                                ? "Fasilitas darurat"
-                                : "Belum ada fasilitas",
-                        icon: Building2,
-                        tone: "forest",
-                    },
-                ];
+              ? petugasStats
+              : wargaStats;
 
     const statGridClass =
         role === "warga"
             ? "grid gap-3 sm:grid-cols-3"
             : "grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
+
+    const pageTitle =
+        role === "admin"
+            ? "Monitoring Peta Wilayah"
+            : role === "petugas"
+              ? "Monitoring Kejadian"
+              : "Peta Kejadian Sekitar";
+
+    const pageDescription =
+        role === "admin"
+            ? "Pantau kejadian, wilayah, fasilitas, dan kondisi kebencanaan secara terintegrasi."
+            : role === "petugas"
+              ? "Pantau kejadian aktif dan laporan yang membutuhkan penanganan."
+              : "Lihat informasi kejadian dan kondisi kebencanaan di sekitar Anda.";
 
     return (
         <>
@@ -576,25 +633,17 @@ export default function PetaIndex({
 
                                 <div>
                                     <h1 className="text-xl font-bold tracking-tight md:text-2xl">
-                                        {role === "admin"
-                                            ? "Monitoring Peta Wilayah"
-                                            : role === "petugas"
-                                              ? "Monitoring Kejadian"
-                                              : "Peta Kejadian Sekitar"}
+                                        {pageTitle}
                                     </h1>
 
                                     <p className="mt-1 max-w-2xl text-sm text-navy-100/80">
-                                        {role === "admin"
-                                            ? "Pantau kejadian, wilayah, fasilitas, dan kondisi kebencanaan secara terintegrasi."
-                                            : role === "petugas"
-                                              ? "Pantau kejadian aktif dan laporan yang membutuhkan penanganan."
-                                              : "Lihat informasi kejadian dan kondisi kebencanaan di sekitar Anda."}
+                                        {pageDescription}
                                     </p>
                                 </div>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold capitalize text-forest-400 backdrop-blur">
+                                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-forest-400 capitalize backdrop-blur">
                                     {role}
                                 </span>
 
@@ -613,9 +662,9 @@ export default function PetaIndex({
                     ====================================================== */}
                     <div className={statGridClass}>
                         {loading
-                            ? Array.from({ length: statCards.length }).map(
-                                  (_, i) => <StatCardSkeleton key={i} />,
-                              )
+                            ? statCards.map((card) => (
+                                  <StatCardSkeleton key={card.title} />
+                              ))
                             : statCards.map((card, i) => (
                                   <Reveal key={card.title} delay={i * 80}>
                                       <StatCard {...card} />
@@ -641,25 +690,99 @@ export default function PetaIndex({
                                         description="Pilih wilayah untuk melihat detail peta."
                                     />
 
-                                    <select
-                                        value={selectedArea}
-                                        onChange={(event) =>
-                                            changeArea(event.target.value)
-                                        }
-                                        disabled={areas.length === 0}
-                                        className="mt-4 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        <option value="">Semua wilayah</option>
+                                    {area && (
+                                        <div className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-navy-200 bg-navy-50 px-3 py-2 text-sm dark:border-navy-500/30 dark:bg-navy-500/10">
+                                            <span className="min-w-0 truncate font-medium">
+                                                {area.name}
+                                            </span>
 
-                                        {areas.map((item) => (
-                                            <option
-                                                key={item.id}
-                                                value={item.slug}
+                                            <button
+                                                type="button"
+                                                onClick={() => changeArea("")}
+                                                className="shrink-0 text-xs font-semibold text-navy-600 hover:text-navy-800 dark:text-navy-400 dark:hover:text-navy-200"
                                             >
-                                                {item.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                                Semua wilayah
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="relative mt-3">
+                                        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+
+                                        <input
+                                            type="search"
+                                            value={query}
+                                            onChange={(event) =>
+                                                setQuery(event.target.value)
+                                            }
+                                            onKeyDown={(event) => {
+                                                if (
+                                                    event.key === "Enter" &&
+                                                    filteredAreas.length > 0
+                                                ) {
+                                                    event.preventDefault();
+                                                    changeArea(
+                                                        filteredAreas[0].slug,
+                                                    );
+                                                }
+                                            }}
+                                            disabled={areas.length === 0}
+                                            placeholder="Cari RW, kelurahan, atau kecamatan"
+                                            aria-label="Cari wilayah"
+                                            className="h-10 w-full rounded-xl border border-border bg-background pr-9 pl-9 text-sm transition outline-none focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                        />
+
+                                        {query && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setQuery("")}
+                                                aria-label="Hapus pencarian"
+                                                className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                                            >
+                                                <X className="size-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {filteredAreas.length > 0 && (
+                                        <ul className="mt-2 max-h-56 divide-y divide-border overflow-y-auto rounded-xl border border-border">
+                                            {filteredAreas.map((item) => (
+                                                <li key={item.id}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            changeArea(
+                                                                item.slug,
+                                                            )
+                                                        }
+                                                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-navy-50 dark:hover:bg-navy-500/10"
+                                                    >
+                                                        <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+                                                        <span className="min-w-0 flex-1 truncate">
+                                                            {item.label}
+                                                        </span>
+                                                        <span className="shrink-0 text-xs text-muted-foreground uppercase">
+                                                            {item.type}
+                                                        </span>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+
+                                    {areaNotFound && (
+                                        <div
+                                            role="alert"
+                                            className="mt-2 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                                        >
+                                            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                                            <span>
+                                                Wilayah &quot;{trimmedQuery}
+                                                &quot; tidak ditemukan. Periksa
+                                                ejaan atau coba kata kunci lain.
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {areas.length === 0 && (
                                         <p className="mt-2 flex items-start gap-1.5 text-xs text-sun-600 dark:text-sun-300">

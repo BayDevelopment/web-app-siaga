@@ -1,11 +1,14 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+
 import {
     ChevronDown,
     ClipboardList,
     LoaderCircle,
+    MapPin,
     Phone,
     Plus,
     RefreshCw,
+    Search,
     ShieldAlert,
     Siren,
     TriangleAlert,
@@ -14,6 +17,9 @@ import {
     Info,
     type LucideIcon,
 } from 'lucide-react';
+
+import Swal from 'sweetalert2';
+
 import {
     lazy,
     Suspense,
@@ -22,6 +28,7 @@ import {
     useMemo,
     useRef,
     useState,
+    type ReactNode,
 } from 'react';
 
 import type {
@@ -32,11 +39,11 @@ import type {
     MapZone,
 } from '@/components/map/disaster-map';
 
-// Leaflet butuh `window`, jadi dimuat lazy dan hanya setelah mount di browser.
+// Leaflet membutuhkan window, jadi dimuat setelah browser melakukan mount.
 const DisasterMap = lazy(() => import('@/components/map/disaster-map'));
 
 /* ============================================================
-   Tipe
+   TIPE
 ============================================================ */
 
 type Contact = {
@@ -56,6 +63,21 @@ type Announcement = {
     published_at: string | null;
 };
 
+/**
+ * Data wilayah yang dikirim oleh MapController.
+ *
+ * Contoh:
+ * RW 07 — Warnasari
+ */
+type Area = {
+    id: number;
+    name: string;
+    type: 'kelurahan' | 'rw' | 'rt' | string;
+    slug: string;
+    parent_name: string | null;
+    label: string;
+};
+
 type Props = {
     canRegister?: boolean;
     regionName?: string;
@@ -71,21 +93,33 @@ type Props = {
 
     contacts?: Contact[];
     announcements?: Announcement[];
+
+    /**
+     * Daftar wilayah dari MapController.
+     */
+    areas?: Area[];
 };
 
 type SharedProps = {
-    auth?: { user?: unknown | null };
+    auth?: {
+        user?: unknown | null;
+    };
 };
 
 /* ============================================================
-   Konfigurasi
+   KONFIGURASI
 ============================================================ */
 
 const REFRESH_MS = 60_000;
 
 const LEVELS: Record<
     Level,
-    { label: string; rank: number; className: string; icon: LucideIcon }
+    {
+        label: string;
+        rank: number;
+        className: string;
+        icon: LucideIcon;
+    }
 > = {
     info: {
         label: 'Info',
@@ -93,18 +127,21 @@ const LEVELS: Record<
         className: 'bg-sky-600 text-white',
         icon: Info,
     },
+
     waspada: {
         label: 'Waspada',
         rank: 1,
         className: 'bg-amber-400 text-neutral-900',
         icon: TriangleAlert,
     },
+
     siaga: {
         label: 'Siaga',
         rank: 2,
         className: 'bg-orange-600 text-white',
         icon: ShieldAlert,
     },
+
     awas: {
         label: 'Awas',
         rank: 3,
@@ -124,13 +161,32 @@ function formatClock(date: Date): string {
     }).format(date);
 }
 
+/**
+ * Nama tipe wilayah agar lebih mudah dibaca pengguna.
+ */
+function areaTypeLabel(type: string): string {
+    switch (type) {
+        case 'kelurahan':
+            return 'Kelurahan';
+
+        case 'rw':
+            return 'RW';
+
+        case 'rt':
+            return 'RT';
+
+        default:
+            return type;
+    }
+}
+
 /* ============================================================
-   Halaman
+   HALAMAN
 ============================================================ */
 
 export default function Home({
     canRegister = false,
-    regionName = 'RW 07, Kelurahan Warnasari',
+    regionName = 'Semua Wilayah',
     center,
     zoom = 15,
     boundary = null,
@@ -140,8 +196,10 @@ export default function Home({
     facilities = [],
     contacts = [],
     announcements = [],
+    areas = [],
 }: Props) {
     const { auth } = usePage<SharedProps>().props;
+
     const isLoggedIn = Boolean(auth?.user);
 
     const [mounted, setMounted] = useState(false);
@@ -149,31 +207,45 @@ export default function Home({
     const [activeTypeIds, setActiveTypeIds] = useState<number[]>(() =>
         types.map((type) => type.id),
     );
+
     const [showZones, setShowZones] = useState(true);
+
     const [showFacilities, setShowFacilities] = useState(true);
 
-    useEffect(() => setMounted(true), []);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
-    /* ---------- Muat ulang data berkala ---------- */
+    /* ========================================================
+       REFRESH DATA
+    ======================================================== */
 
     const [refreshing, setRefreshing] = useState(false);
+
     const [updatedAt, setUpdatedAt] = useState(() => new Date());
+
     const lastRefresh = useRef(Date.now());
 
     const refresh = useCallback(() => {
         router.reload({
             only: ['reports', 'announcements'],
-            onStart: () => setRefreshing(true),
+
+            onStart: () => {
+                setRefreshing(true);
+            },
+
             onSuccess: () => {
                 lastRefresh.current = Date.now();
                 setUpdatedAt(new Date());
             },
-            onFinish: () => setRefreshing(false),
+
+            onFinish: () => {
+                setRefreshing(false);
+            },
         });
     }, []);
 
     useEffect(() => {
-        // Tidak memuat ulang saat tab tersembunyi supaya hemat data dan baterai.
         const timer = setInterval(() => {
             if (document.visibilityState === 'visible') {
                 refresh();
@@ -197,14 +269,19 @@ export default function Home({
         };
     }, [refresh]);
 
-    /* ---------- Status koneksi (sinyal sering buruk saat darurat) ---------- */
+    /* ========================================================
+       STATUS ONLINE / OFFLINE
+    ======================================================== */
 
     const [online, setOnline] = useState(true);
 
     useEffect(() => {
-        const sync = () => setOnline(navigator.onLine);
+        const sync = () => {
+            setOnline(navigator.onLine);
+        };
 
         sync();
+
         window.addEventListener('online', sync);
         window.addEventListener('offline', sync);
 
@@ -214,13 +291,18 @@ export default function Home({
         };
     }, []);
 
-    /* ---------- Turunan data ---------- */
+    /* ========================================================
+       FILTER BENCANA
+    ======================================================== */
 
     const countByType = useMemo(() => {
         const counts = new Map<number, number>();
 
         for (const report of reports) {
-            counts.set(report.type_id, (counts.get(report.type_id) ?? 0) + 1);
+            counts.set(
+                report.type_id,
+                (counts.get(report.type_id) ?? 0) + 1,
+            );
         }
 
         return counts;
@@ -228,8 +310,9 @@ export default function Home({
 
     const visibleCount = useMemo(
         () =>
-            reports.filter((report) => activeTypeIds.includes(report.type_id))
-                .length,
+            reports.filter((report) =>
+                activeTypeIds.includes(report.type_id),
+            ).length,
         [reports, activeTypeIds],
     );
 
@@ -241,17 +324,29 @@ export default function Home({
         );
     }
 
-    /* ---------- Render ---------- */
+    /* ========================================================
+       RENDER
+    ======================================================== */
 
     return (
         <>
             <Head title={`Peta kejadian ${regionName}`} />
 
             <div className="relative h-svh w-full overflow-hidden bg-neutral-200 dark:bg-neutral-800">
-                {/* Peta */}
+                {/* =================================================
+                    PETA
+                ================================================= */}
+
                 <div className="absolute inset-0">
                     {mounted && center ? (
-                        <Suspense fallback={<MapPlaceholder text="Memuat peta" loading />}>
+                        <Suspense
+                            fallback={
+                                <MapPlaceholder
+                                    text="Memuat peta"
+                                    loading
+                                />
+                            }
+                        >
                             <DisasterMap
                                 center={center}
                                 zoom={zoom}
@@ -278,13 +373,17 @@ export default function Home({
                     )}
                 </div>
 
-                {/* Lapisan antarmuka */}
+                {/* =================================================
+                    LAPISAN UI
+                ================================================= */}
+
                 <div className="pointer-events-none absolute inset-0 z-[1100] flex flex-col">
                     <header className="flex flex-col gap-2 p-3 sm:p-4">
                         <TopBar
                             regionName={regionName}
                             isLoggedIn={isLoggedIn}
                             canRegister={canRegister}
+                            areas={areas}
                         />
 
                         <Announcements items={announcements} />
@@ -297,6 +396,10 @@ export default function Home({
                             onRefresh={refresh}
                         />
 
+                        {/* =================================================
+                            FILTER PETA
+                        ================================================= */}
+
                         <div
                             role="group"
                             aria-label="Filter peta"
@@ -306,9 +409,13 @@ export default function Home({
                                 <Chip
                                     key={type.id}
                                     active={activeTypeIds.includes(type.id)}
-                                    onClick={() => toggleType(type.id)}
+                                    onClick={() =>
+                                        toggleType(type.id)
+                                    }
                                     swatch={type.color}
-                                    count={countByType.get(type.id) ?? 0}
+                                    count={
+                                        countByType.get(type.id) ?? 0
+                                    }
                                 >
                                     {type.name}
                                 </Chip>
@@ -316,19 +423,27 @@ export default function Home({
 
                             <Chip
                                 active={showZones}
-                                onClick={() => setShowZones((v) => !v)}
+                                onClick={() =>
+                                    setShowZones((value) => !value)
+                                }
                             >
                                 Zona rawan
                             </Chip>
 
                             <Chip
                                 active={showFacilities}
-                                onClick={() => setShowFacilities((v) => !v)}
+                                onClick={() =>
+                                    setShowFacilities((value) => !value)
+                                }
                             >
                                 Titik kumpul dan posko
                             </Chip>
                         </div>
                     </header>
+
+                    {/* =================================================
+                        EMPTY STATE
+                    ================================================= */}
 
                     {visibleCount === 0 && center && (
                         <p
@@ -342,7 +457,10 @@ export default function Home({
                     )}
                 </div>
 
-                {/* Aksi utama. Dinaikkan sedikit agar atribusi peta tetap terbaca. */}
+                {/* =================================================
+                    AKSI UTAMA
+                ================================================= */}
+
                 <div className="absolute bottom-7 right-3 z-[1100] flex flex-col items-end gap-2 sm:right-4">
                     <ContactsMenu contacts={contacts} />
 
@@ -360,85 +478,385 @@ export default function Home({
 }
 
 /* ============================================================
-   Bagian-bagian halaman
+   TOP BAR + SEARCH WILAYAH
 ============================================================ */
 
 function TopBar({
     regionName,
     isLoggedIn,
     canRegister,
+    areas,
 }: {
     regionName: string;
     isLoggedIn: boolean;
     canRegister: boolean;
+    areas: Area[];
 }) {
     const linkClass =
         'rounded-md px-3 py-1.5 text-sm transition hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary';
 
-    return (
-        <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-xl border bg-background/90 px-3 py-2.5 shadow-sm backdrop-blur sm:px-4">
-            <div className="flex min-w-0 items-center gap-3">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    <Siren className="size-5" />
-                </span>
+    const [query, setQuery] = useState('');
 
-                <div className="min-w-0">
-                    <h1 className="text-base font-semibold leading-tight">
-                        SIAGA-W
-                    </h1>
-                    <p className="truncate text-xs text-muted-foreground">
-                        {regionName}
-                    </p>
+    const [open, setOpen] = useState(false);
+
+    const searchWrapper = useRef<HTMLDivElement>(null);
+
+    /**
+     * Hasil pencarian wilayah.
+     *
+     * Mencocokkan:
+     * - name
+     * - label
+     * - parent_name
+     * - type
+     * - slug
+     */
+    const filteredAreas = useMemo(() => {
+        const keyword = query.trim().toLowerCase();
+
+        if (!keyword) {
+            return areas.slice(0, 8);
+        }
+
+        return areas
+            .filter((area) => {
+                const searchableText = [
+                    area.name,
+                    area.label,
+                    area.parent_name ?? '',
+                    area.type,
+                    area.slug,
+                ]
+                    .join(' ')
+                    .toLowerCase();
+
+                return searchableText.includes(keyword);
+            })
+            .slice(0, 8);
+    }, [areas, query]);
+
+    /**
+     * Klik wilayah.
+     */
+    function selectArea(area: Area) {
+        setQuery('');
+
+        setOpen(false);
+
+        router.get(`/wilayah/${encodeURIComponent(area.slug)}`);
+    }
+
+    /**
+     * Submit pencarian.
+     */
+    function handleSearchSubmit(
+        event: React.FormEvent<HTMLFormElement>,
+    ) {
+        event.preventDefault();
+
+        const keyword = query.trim();
+
+        if (!keyword) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Cari Wilayah',
+                text: 'Silakan masukkan nama wilayah yang ingin dicari.',
+                confirmButtonText: 'Mengerti',
+            });
+
+            return;
+        }
+
+        if (filteredAreas.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Wilayah Tidak Ditemukan',
+                text: `Wilayah "${keyword}" tidak tersedia dalam sistem SIAGA-W.`,
+                confirmButtonText: 'OK',
+            });
+
+            return;
+        }
+
+        /**
+         * Jika hasil hanya satu,
+         * langsung buka wilayah tersebut.
+         */
+        if (filteredAreas.length === 1) {
+            selectArea(filteredAreas[0]);
+            return;
+        }
+
+        /**
+         * Jika lebih dari satu hasil,
+         * dropdown tetap dibuka agar pengguna memilih.
+         */
+        setOpen(true);
+    }
+
+    /**
+     * Tutup dropdown dengan Escape dan klik di luar.
+     */
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setOpen(false);
+            }
+        };
+
+        const onPointerDown = (event: PointerEvent) => {
+            if (
+                !searchWrapper.current?.contains(
+                    event.target as Node,
+                )
+            ) {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('pointerdown', onPointerDown);
+
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+            document.removeEventListener(
+                'pointerdown',
+                onPointerDown,
+            );
+        };
+    }, [open]);
+
+    return (
+        <div className="pointer-events-auto flex flex-col gap-3 rounded-xl border bg-background/90 px-3 py-2.5 shadow-sm backdrop-blur sm:px-4">
+            {/* =====================================================
+                BARIS UTAMA
+            ===================================================== */}
+
+            <div className="flex items-center justify-between gap-3">
+                {/* LOGO / IDENTITAS */}
+                <div className="flex min-w-0 shrink-0 items-center gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                        <Siren className="size-5" />
+                    </span>
+
+                    <div className="min-w-0">
+                        <h1 className="text-base font-semibold leading-tight">
+                            SIAGA-W
+                        </h1>
+
+                        <p className="max-w-[180px] truncate text-xs text-muted-foreground sm:max-w-[260px]">
+                            {regionName}
+                        </p>
+                    </div>
                 </div>
+
+                {/* NAVIGASI */}
+                <nav
+                    aria-label="Navigasi utama"
+                    className="flex shrink-0 items-center gap-1"
+                >
+                    <Link
+                        href="/laporan"
+                        className={`${linkClass} inline-flex items-center gap-1.5`}
+                    >
+                        <ClipboardList className="size-4" />
+
+                        <span className="hidden sm:inline">
+                            Laporan
+                        </span>
+                    </Link>
+
+                    {isLoggedIn ? (
+                        <Link
+                            href="/dashboard"
+                            className={`${linkClass} border`}
+                        >
+                            Dashboard
+                        </Link>
+                    ) : (
+                        <>
+                            <Link
+                                href="/login"
+                                className={linkClass}
+                            >
+                                Masuk
+                            </Link>
+
+                            {canRegister && (
+                                <Link
+                                    href="/register"
+                                    className={`${linkClass} hidden border sm:inline-flex`}
+                                >
+                                    Daftar
+                                </Link>
+                            )}
+                        </>
+                    )}
+                </nav>
             </div>
 
-            <nav
-                aria-label="Navigasi utama"
-                className="flex shrink-0 items-center gap-1"
+            {/* =====================================================
+                SEARCH WILAYAH
+            ===================================================== */}
+
+            <div
+                ref={searchWrapper}
+                className="relative w-full"
             >
-                <Link href="/laporan" className={`${linkClass} inline-flex items-center gap-1.5`}>
-                    <ClipboardList className="size-4" />
-                    <span className="hidden sm:inline">Laporan</span>
-                </Link>
+                <form
+                    onSubmit={handleSearchSubmit}
+                    role="search"
+                >
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
-                {isLoggedIn ? (
-                    <Link
-                        href="/dashboard"
-                        className={`${linkClass} border`}
-                    >
-                        Dashboard
-                    </Link>
-                ) : (
-                    <>
-                        <Link href="/login" className={linkClass}>
-                            Masuk
-                        </Link>
+                        <input
+                            type="search"
+                            value={query}
+                            onChange={(event) => {
+                                setQuery(event.target.value);
+                                setOpen(true);
+                            }}
+                            onFocus={() => setOpen(true)}
+                            placeholder="Cari wilayah, RW, RT, atau kelurahan..."
+                            aria-label="Cari wilayah"
+                            aria-expanded={open}
+                            aria-autocomplete="list"
+                            className="h-10 w-full rounded-lg border bg-background pl-9 pr-10 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
 
-                        {canRegister && (
-                            <Link
-                                href="/register"
-                                className={`${linkClass} border`}
+                        {query && (
+                            <button
+                                type="button"
+                                aria-label="Hapus pencarian"
+                                onClick={() => {
+                                    setQuery('');
+                                    setOpen(false);
+                                }}
+                                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
                             >
-                                Daftar
-                            </Link>
+                                <X className="size-4" />
+                            </button>
                         )}
-                    </>
+                    </div>
+                </form>
+
+                {/* =================================================
+                    HASIL PENCARIAN
+                ================================================= */}
+
+                {open && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[1200] overflow-hidden rounded-xl border bg-background/95 shadow-xl backdrop-blur">
+                        {query.trim() && filteredAreas.length === 0 ? (
+                            <div className="px-4 py-5 text-center">
+                                <MapPin className="mx-auto mb-2 size-6 text-muted-foreground" />
+
+                                <p className="text-sm font-medium">
+                                    Wilayah tidak ditemukan
+                                </p>
+
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Coba gunakan nama RW, RT, atau
+                                    kelurahan yang berbeda.
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        Swal.fire({
+                                            icon: 'warning',
+                                            title: 'Wilayah Tidak Ditemukan',
+                                            text: `Wilayah "${query.trim()}" tidak tersedia dalam sistem SIAGA-W.`,
+                                            confirmButtonText: 'OK',
+                                        });
+                                    }}
+                                    className="mt-3 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
+                                >
+                                    Lihat pemberitahuan
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="border-b px-4 py-2.5">
+                                    <p className="text-xs font-medium text-muted-foreground">
+                                        {query.trim()
+                                            ? `${filteredAreas.length} wilayah ditemukan`
+                                            : 'Pilih wilayah'}
+                                    </p>
+                                </div>
+
+                                <div className="max-h-72 overflow-y-auto p-1.5">
+                                    {filteredAreas.map((area) => (
+                                        <button
+                                            key={area.id}
+                                            type="button"
+                                            onClick={() =>
+                                                selectArea(area)
+                                            }
+                                            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                                        >
+                                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                                <MapPin className="size-4" />
+                                            </span>
+
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-sm font-medium">
+                                                    {area.label ||
+                                                        area.name}
+                                                </span>
+
+                                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                                    {areaTypeLabel(
+                                                        area.type,
+                                                    )}
+
+                                                    {area.parent_name
+                                                        ? ` • ${area.parent_name}`
+                                                        : ''}
+                                                </span>
+                                            </span>
+
+                                            <span className="shrink-0 text-xs text-muted-foreground">
+                                                Lihat
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
-            </nav>
+            </div>
         </div>
     );
 }
 
-function Announcements({ items }: { items: Announcement[] }) {
+/* ============================================================
+   PENGUMUMAN
+============================================================ */
+
+function Announcements({
+    items,
+}: {
+    items: Announcement[];
+}) {
     const [dismissed, setDismissed] = useState<number[]>([]);
+
     const [expanded, setExpanded] = useState(false);
 
-    // Yang paling genting selalu di atas.
     const visible = useMemo(
         () =>
             items
                 .filter((item) => !dismissed.includes(item.id))
-                .sort((a, b) => levelOf(b.level).rank - levelOf(a.level).rank),
+                .sort(
+                    (a, b) =>
+                        levelOf(b.level).rank -
+                        levelOf(a.level).rank,
+                ),
         [items, dismissed],
     );
 
@@ -446,13 +864,17 @@ function Announcements({ items }: { items: Announcement[] }) {
         return null;
     }
 
-    const shown = expanded ? visible : visible.slice(0, 1);
+    const shown = expanded
+        ? visible
+        : visible.slice(0, 1);
+
     const hiddenCount = visible.length - shown.length;
 
     return (
         <div className="pointer-events-auto space-y-2">
             {shown.map((item) => {
                 const level = levelOf(item.level);
+
                 const Icon = level.icon;
 
                 return (
@@ -467,20 +889,28 @@ function Announcements({ items }: { items: Announcement[] }) {
                             <p className="font-semibold">
                                 {level.label}: {item.title}
                             </p>
+
                             <p
-                                className={`mt-0.5 opacity-95 ${expanded ? '' : 'line-clamp-2'}`}
+                                className={`mt-0.5 opacity-95 ${
+                                    expanded
+                                        ? ''
+                                        : 'line-clamp-2'
+                                }`}
                             >
                                 {item.body}
                             </p>
                         </div>
 
-                        {/* Peringatan level Awas tidak bisa ditutup. */}
+                        {/* Pengumuman Awas tidak dapat ditutup */}
                         {item.level !== 'awas' && (
                             <button
                                 type="button"
                                 aria-label={`Tutup pengumuman ${item.title}`}
                                 onClick={() =>
-                                    setDismissed((current) => [...current, item.id])
+                                    setDismissed((current) => [
+                                        ...current,
+                                        item.id,
+                                    ])
                                 }
                                 className="rounded-md p-1 opacity-80 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-current"
                             >
@@ -491,24 +921,34 @@ function Announcements({ items }: { items: Announcement[] }) {
                 );
             })}
 
-            {(hiddenCount > 0 || expanded) && visible.length > 1 && (
-                <button
-                    type="button"
-                    aria-expanded={expanded}
-                    onClick={() => setExpanded((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur transition hover:bg-accent"
-                >
-                    <ChevronDown
-                        className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                    />
-                    {expanded
-                        ? 'Ringkas pengumuman'
-                        : `${hiddenCount} pengumuman lain`}
-                </button>
-            )}
+            {(hiddenCount > 0 || expanded) &&
+                visible.length > 1 && (
+                    <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() =>
+                            setExpanded((value) => !value)
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur transition hover:bg-accent"
+                    >
+                        <ChevronDown
+                            className={`size-3.5 transition-transform ${
+                                expanded ? 'rotate-180' : ''
+                            }`}
+                        />
+
+                        {expanded
+                            ? 'Ringkas pengumuman'
+                            : `${hiddenCount} pengumuman lain`}
+                    </button>
+                )}
         </div>
     );
 }
+
+/* ============================================================
+   STATUS LINE
+============================================================ */
 
 function StatusLine({
     count,
@@ -528,6 +968,7 @@ function StatusLine({
             {online ? (
                 <span className="relative flex size-2 shrink-0">
                     <span className="absolute inline-flex size-full rounded-full bg-emerald-500 opacity-60 motion-safe:animate-ping" />
+
                     <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
                 </span>
             ) : (
@@ -535,11 +976,19 @@ function StatusLine({
             )}
 
             <span className="truncate">
-                <strong className="font-semibold">{count}</strong> kejadian aktif
+                <strong className="font-semibold">
+                    {count}
+                </strong>{' '}
+                kejadian aktif
+
                 <span className="text-muted-foreground">
                     {online
-                        ? ` · diperbarui ${formatClock(updatedAt)}`
-                        : ` · offline, data terakhir ${formatClock(updatedAt)}`}
+                        ? ` · diperbarui ${formatClock(
+                              updatedAt,
+                          )}`
+                        : ` · offline, data terakhir ${formatClock(
+                              updatedAt,
+                          )}`}
                 </span>
             </span>
 
@@ -551,12 +1000,20 @@ function StatusLine({
                 className="flex size-7 shrink-0 items-center justify-center rounded-full transition hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
             >
                 <RefreshCw
-                    className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`}
+                    className={`size-3.5 ${
+                        refreshing
+                            ? 'motion-safe:animate-spin'
+                            : ''
+                    }`}
                 />
             </button>
         </div>
     );
 }
+
+/* ============================================================
+   CHIP FILTER
+============================================================ */
 
 function Chip({
     active,
@@ -569,7 +1026,7 @@ function Chip({
     onClick: () => void;
     swatch?: string;
     count?: number;
-    children: React.ReactNode;
+    children: ReactNode;
 }) {
     return (
         <button
@@ -578,6 +1035,7 @@ function Chip({
             onClick={onClick}
             className={[
                 'pointer-events-auto flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-sm backdrop-blur transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
+
                 active
                     ? 'border-foreground/20 bg-background/95'
                     : 'border-transparent bg-background/60 text-muted-foreground',
@@ -586,7 +1044,10 @@ function Chip({
             {swatch && (
                 <span
                     className="size-2.5 rounded-full"
-                    style={{ backgroundColor: swatch, opacity: active ? 1 : 0.4 }}
+                    style={{
+                        backgroundColor: swatch,
+                        opacity: active ? 1 : 0.4,
+                    }}
                 />
             )}
 
@@ -601,43 +1062,68 @@ function Chip({
     );
 }
 
-function ContactsMenu({ contacts }: { contacts: Contact[] }) {
+/* ============================================================
+   KONTAK DARURAT
+============================================================ */
+
+function ContactsMenu({
+    contacts,
+}: {
+    contacts: Contact[];
+}) {
     const [open, setOpen] = useState(false);
+
     const wrapper = useRef<HTMLDivElement>(null);
 
-    // Tutup saat menekan Escape atau mengklik di luar menu.
     useEffect(() => {
         if (!open) {
             return;
         }
 
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setOpen(false);
+            if (event.key === 'Escape') {
+                setOpen(false);
+            }
         };
 
         const onPointer = (event: PointerEvent) => {
-            if (!wrapper.current?.contains(event.target as Node)) {
+            if (
+                !wrapper.current?.contains(
+                    event.target as Node,
+                )
+            ) {
                 setOpen(false);
             }
         };
 
         document.addEventListener('keydown', onKey);
-        document.addEventListener('pointerdown', onPointer);
+        document.addEventListener(
+            'pointerdown',
+            onPointer,
+        );
 
         return () => {
             document.removeEventListener('keydown', onKey);
-            document.removeEventListener('pointerdown', onPointer);
+            document.removeEventListener(
+                'pointerdown',
+                onPointer,
+            );
         };
     }, [open]);
 
     return (
-        <div ref={wrapper} className="flex flex-col items-end gap-2">
+        <div
+            ref={wrapper}
+            className="flex flex-col items-end gap-2"
+        >
             {open && (
                 <section
                     aria-label="Nomor darurat"
                     className="w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur"
                 >
-                    <h2 className="mb-2 text-sm font-semibold">Nomor darurat</h2>
+                    <h2 className="mb-2 text-sm font-semibold">
+                        Nomor darurat
+                    </h2>
 
                     {contacts.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
@@ -665,6 +1151,7 @@ function ContactsMenu({ contacts }: { contacts: Contact[] }) {
 
                                         <span className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
                                             <Phone className="size-3.5 text-primary" />
+
                                             {contact.phone}
                                         </span>
                                     </a>
@@ -678,15 +1165,22 @@ function ContactsMenu({ contacts }: { contacts: Contact[] }) {
             <button
                 type="button"
                 aria-expanded={open}
-                onClick={() => setOpen((v) => !v)}
+                onClick={() =>
+                    setOpen((value) => !value)
+                }
                 className="inline-flex items-center gap-2 rounded-full border bg-background/95 px-4 py-2.5 text-sm font-medium shadow-lg backdrop-blur transition hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
                 <Phone className="size-4" />
+
                 Nomor darurat
             </button>
         </div>
     );
 }
+
+/* ============================================================
+   MAP PLACEHOLDER
+============================================================ */
 
 function MapPlaceholder({
     text,
@@ -697,7 +1191,10 @@ function MapPlaceholder({
 }) {
     return (
         <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            {loading && <LoaderCircle className="size-4 motion-safe:animate-spin" />}
+            {loading && (
+                <LoaderCircle className="size-4 motion-safe:animate-spin" />
+            )}
+
             {text}
         </div>
     );

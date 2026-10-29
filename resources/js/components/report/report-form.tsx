@@ -1,5 +1,5 @@
-import { Link } from '@inertiajs/react';
-import type { InertiaFormProps } from '@inertiajs/react';
+import { Link } from "@inertiajs/react";
+import type { InertiaFormProps } from "@inertiajs/react";
 import {
     AlertCircle,
     CheckCircle2,
@@ -11,7 +11,7 @@ import {
     Trash2,
     Undo2,
     X,
-} from 'lucide-react';
+} from "lucide-react";
 import {
     useEffect,
     useMemo,
@@ -19,8 +19,9 @@ import {
     type ChangeEvent,
     type FormEvent,
     type ReactNode,
-} from 'react';
+} from "react";
 
+import LocationPicker from "@/components/report/location-picker";
 import {
     MAX_PHOTOS,
     SEVERITY_META,
@@ -28,7 +29,7 @@ import {
     type AreaOption,
     type DisasterType,
     type ReportPhoto,
-} from '@/lib/report';
+} from "@/lib/report";
 
 export type ReportFormData = {
     disaster_type_id: string;
@@ -83,7 +84,7 @@ export default function ReportForm({
         const groups = new Map<string, AreaOption[]>();
 
         for (const area of areas) {
-            const key = area.parent_name ?? 'Wilayah utama';
+            const key = area.parent_name ?? "Wilayah utama";
             groups.set(key, [...(groups.get(key) ?? []), area]);
         }
 
@@ -96,7 +97,7 @@ export default function ReportForm({
         if (!navigator.geolocation) {
             setGpsMessage({
                 ok: false,
-                text: 'Browser Anda tidak mendukung fitur lokasi.',
+                text: "Browser Anda tidak mendukung fitur lokasi.",
             });
             return;
         }
@@ -115,14 +116,14 @@ export default function ReportForm({
                 setGpsLoading(false);
                 setGpsMessage({
                     ok: true,
-                    text: 'Lokasi berhasil diambil dari perangkat Anda.',
+                    text: "Lokasi berhasil diambil dari perangkat Anda.",
                 });
             },
             () => {
                 setGpsLoading(false);
                 setGpsMessage({
                     ok: false,
-                    text: 'Lokasi tidak dapat diambil. Pastikan izin lokasi sudah diberikan.',
+                    text: "Lokasi tidak dapat diambil. Pastikan izin lokasi sudah diberikan.",
                 });
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
@@ -135,13 +136,13 @@ export default function ReportForm({
 
         if (!data.latitude || !data.longitude) return null;
         if (Number.isNaN(lat) || Number.isNaN(lng)) {
-            return 'Koordinat harus berupa angka, contoh -6.1234567.';
+            return "Koordinat harus berupa angka, contoh -6.1234567.";
         }
         if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-            return 'Latitude harus antara -90 dan 90, longitude antara -180 dan 180.';
+            return "Latitude harus antara -90 dan 90, longitude antara -180 dan 180.";
         }
         if (lat < -11.5 || lat > 6.5 || lng < 94.5 || lng > 141.5) {
-            return 'Titik ini berada di luar Indonesia. Pastikan latitude dan longitude tidak tertukar.';
+            return "Titik ini berada di luar Indonesia. Pastikan latitude dan longitude tidak tertukar.";
         }
 
         return null;
@@ -169,26 +170,26 @@ export default function ReportForm({
         const files = Array.from(event.target.files ?? []);
 
         setData(
-            'photos',
+            "photos",
             [...data.photos, ...files].slice(
                 0,
                 MAX_PHOTOS - keptExisting.length,
             ),
         );
 
-        event.target.value = '';
+        event.target.value = "";
     }
 
     function removeNewPhoto(index: number) {
         setData(
-            'photos',
+            "photos",
             data.photos.filter((_, i) => i !== index),
         );
     }
 
     function toggleDeleteExisting(id: number) {
         setData(
-            'delete_photo_ids',
+            "delete_photo_ids",
             data.delete_photo_ids.includes(id)
                 ? data.delete_photo_ids.filter((item) => item !== id)
                 : [...data.delete_photo_ids, id],
@@ -196,7 +197,7 @@ export default function ReportForm({
     }
 
     const photoErrors = Object.entries(errors)
-        .filter(([key]) => key === 'photos' || key.startsWith('photos.'))
+        .filter(([key]) => key === "photos" || key.startsWith("photos."))
         .map(([, message]) => message);
 
     /* ---------- Submit ---------- */
@@ -229,7 +230,7 @@ export default function ReportForm({
                         error={errors.disaster_type_id}
                         hint={
                             types.length === 0
-                                ? 'Jenis kejadian belum tersedia. Hubungi administrator.'
+                                ? "Jenis kejadian belum tersedia. Hubungi administrator."
                                 : undefined
                         }
                     >
@@ -237,7 +238,7 @@ export default function ReportForm({
                             id="disaster_type_id"
                             value={data.disaster_type_id}
                             onChange={(e) =>
-                                setData('disaster_type_id', e.target.value)
+                                setData("disaster_type_id", e.target.value)
                             }
                             disabled={types.length === 0}
                             className={inputClass(!!errors.disaster_type_id)}
@@ -270,14 +271,14 @@ export default function ReportForm({
                         error={errors.area_id}
                         hint={
                             areas.length === 0
-                                ? 'Wilayah belum tersedia. Hubungi administrator.'
+                                ? "Wilayah belum tersedia. Hubungi administrator."
                                 : undefined
                         }
                     >
                         <select
                             id="area_id"
                             value={data.area_id}
-                            onChange={(e) => setData('area_id', e.target.value)}
+                            onChange={(e) => setData("area_id", e.target.value)}
                             disabled={areas.length === 0}
                             className={inputClass(!!errors.area_id)}
                         >
@@ -306,7 +307,9 @@ export default function ReportForm({
                                 id="title"
                                 type="text"
                                 value={data.title}
-                                onChange={(e) => setData('title', e.target.value)}
+                                onChange={(e) =>
+                                    setData("title", e.target.value)
+                                }
                                 placeholder="Contoh: Banjir merendam beberapa rumah warga"
                                 className={inputClass(!!errors.title)}
                             />
@@ -325,9 +328,12 @@ export default function ReportForm({
                                 rows={5}
                                 value={data.description}
                                 onChange={(e) =>
-                                    setData('description', e.target.value)
+                                    setData("description", e.target.value)
                                 }
-                                className={inputClass(!!errors.description, true)}
+                                className={inputClass(
+                                    !!errors.description,
+                                    true,
+                                )}
                             />
                         </Field>
                     </div>
@@ -343,7 +349,7 @@ export default function ReportForm({
                             type="datetime-local"
                             value={data.occurred_at}
                             onChange={(e) =>
-                                setData('occurred_at', e.target.value)
+                                setData("occurred_at", e.target.value)
                             }
                             className={inputClass(!!errors.occurred_at)}
                         />
@@ -351,11 +357,28 @@ export default function ReportForm({
                 </div>
             </Section>
 
+            {/* ---------------- Peta (Leaflet) ---------------- */}
+            {/* Mengikuti wilayah yang dipilih; klik peta mengisi latitude & longitude. */}
+            <LocationPicker
+                areas={areas}
+                areaId={data.area_id}
+                latitude={data.latitude}
+                longitude={data.longitude}
+                onChange={(lat, lng) =>
+                    setData((current) => ({
+                        ...current,
+                        latitude: lat.toFixed(7),
+                        longitude: lng.toFixed(7),
+                    }))
+                }
+                error={errors.latitude || errors.longitude}
+            />
+
             {/* ---------------- Lokasi ---------------- */}
             <Section
                 icon={<MapPin className="h-5 w-5" />}
                 title="Lokasi kejadian"
-                description="Gunakan GPS agar titik lokasi akurat."
+                description="Titik terisi dari peta di atas atau GPS. Anda juga bisa mengetik koordinat manual."
             >
                 <div className="space-y-5">
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
@@ -365,7 +388,8 @@ export default function ReportForm({
                                     Gunakan lokasi saat ini
                                 </p>
                                 <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                                    Koordinat terisi otomatis dari GPS perangkat.
+                                    Koordinat terisi otomatis dari GPS
+                                    perangkat.
                                 </p>
                             </div>
 
@@ -393,11 +417,11 @@ export default function ReportForm({
                             <p
                                 role="status"
                                 className={[
-                                    'mt-3 flex items-start gap-2 rounded-xl bg-white px-3 py-2.5 text-xs',
+                                    "mt-3 flex items-start gap-2 rounded-xl bg-white px-3 py-2.5 text-xs",
                                     gpsMessage.ok
-                                        ? 'text-slate-600'
-                                        : 'text-red-600',
-                                ].join(' ')}
+                                        ? "text-slate-600"
+                                        : "text-red-600",
+                                ].join(" ")}
                             >
                                 {gpsMessage.ok ? (
                                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
@@ -422,7 +446,7 @@ export default function ReportForm({
                                 inputMode="decimal"
                                 value={data.latitude}
                                 onChange={(e) =>
-                                    setData('latitude', e.target.value)
+                                    setData("latitude", e.target.value)
                                 }
                                 placeholder="-6.1234567"
                                 className={inputClass(!!errors.latitude)}
@@ -441,7 +465,7 @@ export default function ReportForm({
                                 inputMode="decimal"
                                 value={data.longitude}
                                 onChange={(e) =>
-                                    setData('longitude', e.target.value)
+                                    setData("longitude", e.target.value)
                                 }
                                 placeholder="106.1234567"
                                 className={inputClass(!!errors.longitude)}
@@ -465,7 +489,7 @@ export default function ReportForm({
                             id="address"
                             rows={3}
                             value={data.address}
-                            onChange={(e) => setData('address', e.target.value)}
+                            onChange={(e) => setData("address", e.target.value)}
                             placeholder="Contoh: Jl. Raya Cilegon, depan masjid, gang sebelah warung"
                             className={inputClass(!!errors.address, true)}
                         />
@@ -494,13 +518,13 @@ export default function ReportForm({
                                 type="button"
                                 role="radio"
                                 aria-checked={selected}
-                                onClick={() => setData('severity', value)}
+                                onClick={() => setData("severity", value)}
                                 className={[
-                                    'flex min-h-[112px] items-start justify-between gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
+                                    "flex min-h-[112px] items-start justify-between gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900",
                                     selected
-                                        ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
-                                ].join(' ')}
+                                        ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+                                ].join(" ")}
                             >
                                 <span>
                                     <span className="block font-semibold">
@@ -542,11 +566,13 @@ export default function ReportForm({
                                 >
                                     <img
                                         src={photo.url}
-                                        alt={photo.caption ?? 'Foto laporan'}
+                                        alt={photo.caption ?? "Foto laporan"}
                                         className={[
-                                            'aspect-square w-full object-cover transition',
-                                            removed ? 'opacity-30 grayscale' : '',
-                                        ].join(' ')}
+                                            "aspect-square w-full object-cover transition",
+                                            removed
+                                                ? "opacity-30 grayscale"
+                                                : "",
+                                        ].join(" ")}
                                     />
 
                                     <button
@@ -602,16 +628,16 @@ export default function ReportForm({
 
                 <label
                     className={[
-                        'flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-4 text-sm font-medium transition',
+                        "flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-4 text-sm font-medium transition",
                         slotsLeft > 0
-                            ? 'border-slate-300 text-slate-700 hover:bg-slate-50'
-                            : 'cursor-not-allowed border-slate-200 text-slate-400',
-                    ].join(' ')}
+                            ? "border-slate-300 text-slate-700 hover:bg-slate-50"
+                            : "cursor-not-allowed border-slate-200 text-slate-400",
+                    ].join(" ")}
                 >
                     <ImagePlus className="h-4 w-4" />
                     {slotsLeft > 0
                         ? `Tambah foto (${slotsLeft} slot tersisa)`
-                        : 'Batas foto tercapai'}
+                        : "Batas foto tercapai"}
 
                     <input
                         type="file"
@@ -746,12 +772,12 @@ function ErrorText({ message }: { message?: string }) {
 
 function inputClass(hasError = false, textarea = false) {
     return [
-        'w-full rounded-xl border bg-white px-4 py-3 text-sm text-slate-800 outline-none transition',
-        'placeholder:text-slate-400 focus:ring-2',
-        'disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400',
-        textarea ? 'resize-y' : '',
+        "w-full rounded-xl border bg-white px-4 py-3 text-sm text-slate-800 outline-none transition",
+        "placeholder:text-slate-400 focus:ring-2",
+        "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400",
+        textarea ? "resize-y" : "",
         hasError
-            ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
-            : 'border-slate-200 focus:border-slate-400 focus:ring-slate-100',
-    ].join(' ');
+            ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+            : "border-slate-200 focus:border-slate-400 focus:ring-slate-100",
+    ].join(" ");
 }

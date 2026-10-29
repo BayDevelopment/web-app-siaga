@@ -8,74 +8,82 @@ use App\Http\Controllers\HazardZoneController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ReportController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 /*
 |--------------------------------------------------------------------------
 | Public
 |--------------------------------------------------------------------------
+|
+| Halaman yang dapat diakses tanpa login.
+|
 */
 
-// Landing page
-Route::get('/', function () {
-    return Inertia::render('home');
-})->name('home');
+// ========================================================================
+// PETA SIAGA-W
+// ========================================================================
 
-// Daftar laporan (publik)
+// Peta utama
+Route::get('/', [MapController::class, 'index'])
+    ->name('home');
+
+// Peta berdasarkan wilayah
+Route::get('/wilayah/{area:slug}', [MapController::class, 'show'])
+    ->name('wilayah.show');
+
+// URL lama /peta diarahkan ke URL yang berlaku
+Route::redirect('/peta', '/');
+Route::redirect('/peta/{slug}', '/wilayah/{slug}');
+
+
+// ========================================================================
+// LAPORAN PUBLIK
+// ========================================================================
+
+// Daftar laporan yang sudah dipublikasikan
 Route::get('/laporan', [ReportController::class, 'index'])
     ->name('laporan.index');
+
+// Form input laporan (warga tidak perlu login)
+Route::get('/laporan/create', [ReportController::class, 'create'])
+    ->name('laporan.create');
+
+// Cek status laporan lewat kode (untuk guest). Dibatasi supaya kode tidak bisa ditebak massal.
+Route::get('/laporan/lacak', [ReportController::class, 'track'])
+    ->middleware('throttle:30,1')
+    ->name('laporan.track');
+
+// Simpan laporan baru
+// Dibatasi 5 kali per jam per IP (limiter "laporan" ada di AppServiceProvider).
+Route::post('/laporan', [ReportController::class, 'store'])
+    ->middleware('throttle:laporan')
+    ->name('laporan.store');
+
+// Detail laporan publik
+Route::get('/laporan/{report}', [ReportController::class, 'show'])
+    ->whereNumber('report')
+    ->name('laporan.show');
+
 
 /*
 |--------------------------------------------------------------------------
 | Authenticated User
 |--------------------------------------------------------------------------
+|
+| Fitur yang membutuhkan login dan verifikasi email.
+|
 */
 
 Route::middleware(['auth', 'verified'])->group(function () {
 
-    /*
-    |--------------------------------------------------------------------------
-    | Dashboard
-    |--------------------------------------------------------------------------
-    */
-
-    Route::get('dashboard', DashboardController::class)
+    // Dashboard
+    Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');
-    /*
-    |--------------------------------------------------------------------------
-    | Peta
-    |--------------------------------------------------------------------------
-    | Sementara masih di balik login karena halaman peta membaca
-    | auth.user.role. Dipindah ke publik setelah MapController dan
-    | frontend peta diperbarui.
-    */
 
-    Route::get('/peta', [MapController::class, 'index'])
-        ->name('peta.index');
-
-    Route::get('/peta/{area:slug}', [MapController::class, 'show'])
-        ->name('peta.show');
-
-    /*
-    |--------------------------------------------------------------------------
-    | Reports (butuh login)
-    |--------------------------------------------------------------------------
-    | /laporan/create HARUS di atas /laporan/{report}.
-    */
-
-    Route::get('/laporan/create', [ReportController::class, 'create'])
-        ->name('laporan.create');
-
-    Route::post('/laporan', [ReportController::class, 'store'])
-        ->middleware('throttle:10,1')
-        ->name('laporan.store');
-
+    // Edit dan hapus laporan membutuhkan login
     Route::get('/laporan/{report}/edit', [ReportController::class, 'edit'])
         ->whereNumber('report')
         ->name('laporan.edit');
 
-    // Form dengan foto dikirim sebagai POST + _method=PUT;
-    // Laravel tetap mencocokkannya ke route ini.
     Route::put('/laporan/{report}', [ReportController::class, 'update'])
         ->whereNumber('report')
         ->name('laporan.update');
@@ -83,25 +91,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/laporan/{report}', [ReportController::class, 'destroy'])
         ->whereNumber('report')
         ->name('laporan.destroy');
+
+    // Verifikasi / ubah status laporan (hanya admin dan petugas, dicek di controller)
+    Route::patch('/laporan/{report}/status', [ReportController::class, 'updateStatus'])
+        ->whereNumber('report')
+        ->name('laporan.status');
 });
 
-/*
-|--------------------------------------------------------------------------
-| Detail laporan (publik)
-|--------------------------------------------------------------------------
-| Sengaja ditaruh setelah /laporan/create. whereNumber memastikan
-| kata seperti "create" tidak pernah dianggap sebagai ID.
-| Guest hanya bisa membuka laporan publik; selebihnya 404 (ReportPolicy).
-*/
-
-Route::get('/laporan/{report}', [ReportController::class, 'show'])
-    ->whereNumber('report')
-    ->name('laporan.show');
 
 /*
 |--------------------------------------------------------------------------
 | Admin
 |--------------------------------------------------------------------------
+|
+| Semua pengelolaan data master hanya dapat dilakukan oleh admin.
+|
 */
 
 Route::middleware(['auth', 'verified', 'role:admin'])
@@ -113,17 +117,24 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::resource('areas', AreaController::class)
             ->except('show');
 
-        // Zona Rawan
+        // Zona rawan
         Route::resource('hazard-zones', HazardZoneController::class)
             ->except('show');
 
-        // Fasilitas Darurat
+        // Fasilitas darurat
         Route::resource('facilities', FacilityController::class)
             ->except('show');
 
-        // Jenis Bencana
+        // Jenis bencana
         Route::resource('disaster-types', DisasterTypeController::class)
             ->except('show');
     });
 
-require __DIR__ . '/settings.php';
+
+/*
+|--------------------------------------------------------------------------
+| Settings
+|--------------------------------------------------------------------------
+*/
+
+require __DIR__.'/settings.php';

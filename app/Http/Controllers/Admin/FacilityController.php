@@ -14,6 +14,16 @@ use Inertia\Response;
 class FacilityController extends Controller
 {
     /**
+     * Jenis fasilitas yang menampung orang, sehingga kapasitas bermakna.
+     * Jenis lain (hidran, pos damkar) selalu disimpan tanpa kapasitas.
+     */
+    private const CAPACITY_TYPES = [
+        'evacuation_point',
+        'posko',
+        'clinic',
+    ];
+
+    /**
      * Menampilkan daftar fasilitas.
      */
     public function index(): Response
@@ -139,6 +149,10 @@ class FacilityController extends Controller
         $validated['is_active'] =
             $request->boolean('is_active');
 
+        if (! in_array($validated['type'], self::CAPACITY_TYPES, true)) {
+            $validated['capacity'] = null;
+        }
+
         Facility::create($validated);
 
         return redirect()
@@ -242,6 +256,10 @@ class FacilityController extends Controller
         $validated['is_active'] =
             $request->boolean('is_active');
 
+        if (! in_array($validated['type'], self::CAPACITY_TYPES, true)) {
+            $validated['capacity'] = null;
+        }
+
         $facility->update($validated);
 
         return redirect()
@@ -269,12 +287,16 @@ class FacilityController extends Controller
     }
 
     /**
-     * Data wilayah untuk dropdown.
+     * Data wilayah untuk dropdown dan peta Leaflet.
+     *
+     * Koordinat tengah dan batas wilayah ikut dikirim supaya peta
+     * di form langsung zoom ke wilayah yang dipilih.
      */
     private function areas()
     {
         return Area::query()
             ->active()
+            ->with('parent:id,name')
             ->orderBy('type')
             ->orderBy('name')
             ->get([
@@ -282,11 +304,22 @@ class FacilityController extends Controller
                 'parent_id',
                 'type',
                 'name',
+                'center_lat',
+                'center_lng',
+                'boundary_geojson',
             ])
             ->map(fn (Area $area) => [
                 'id' => $area->id,
                 'name' => $area->name,
                 'type' => $area->type,
+                'parent_name' => $area->parent?->name,
+                'center_lat' => $area->center_lat !== null
+                    ? (float) $area->center_lat
+                    : null,
+                'center_lng' => $area->center_lng !== null
+                    ? (float) $area->center_lng
+                    : null,
+                'boundary_geojson' => $area->boundary_geojson,
             ])
             ->values();
     }

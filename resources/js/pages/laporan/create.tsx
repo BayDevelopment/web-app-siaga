@@ -1,8 +1,16 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, FileText, Info, ShieldCheck } from 'lucide-react';
+import {
+    ArrowLeft,
+    CircleAlert,
+    FileText,
+    Info,
+    ShieldCheck,
+    User,
+} from 'lucide-react';
 import {
     useEffect,
     useState,
+    type ComponentProps,
     type CSSProperties,
     type FormEvent,
     type ReactNode,
@@ -25,6 +33,16 @@ type Props = {
 type SharedProps = {
     auth?: { user?: { role?: string } | null };
 };
+
+/** Data form ditambah field khusus pelapor tanpa akun dan honeypot anti-bot. */
+type CreateFormData = ReportFormData & {
+    reporter_name: string;
+    reporter_phone: string;
+    website: string;
+};
+
+const inputClass =
+    'w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20';
 
 /* ---------- Helper animasi & skeleton ---------- */
 
@@ -107,10 +125,12 @@ export default function Create({ types, areas }: Props) {
     const { auth } = usePage<SharedProps>().props;
     const loading = useFakeLoading(500);
 
+    const isGuest = !auth?.user;
+
     // Admin dan petugas langsung terverifikasi (sesuai ReportController@store).
     const isStaff = ['admin', 'petugas'].includes(auth?.user?.role ?? '');
 
-    const form = useForm<ReportFormData>({
+    const form = useForm<CreateFormData>({
         disaster_type_id: '',
         area_id: '',
         title: '',
@@ -122,7 +142,13 @@ export default function Create({ types, areas }: Props) {
         occurred_at: nowForDateTimeLocal(),
         photos: [],
         delete_photo_ids: [],
+        reporter_name: '',
+        reporter_phone: '',
+        website: '',
     });
+
+    // Error batas pengiriman datang dari RateLimiter "laporan" (bukan field form).
+    const errors = form.errors as Record<string, string | undefined>;
 
     function submit(event: FormEvent) {
         event.preventDefault();
@@ -167,6 +193,7 @@ export default function Create({ types, areas }: Props) {
                                 </h1>
                                 <p className="mt-1 text-sm text-navy-100/80">
                                     Laporkan kejadian bencana di wilayah Anda.
+                                    Tidak perlu membuat akun.
                                 </p>
                             </div>
                         </div>
@@ -189,13 +216,134 @@ export default function Create({ types, areas }: Props) {
                                 icon={<Info className="h-5 w-5" />}
                                 title="Laporan akan diperiksa dulu"
                             >
-                                Administrator memeriksa laporan Anda sebelum
-                                ditampilkan sebagai kejadian terverifikasi. Anda
-                                masih bisa mengedit laporan selama statusnya
-                                menunggu verifikasi.
+                                Petugas memeriksa laporan Anda sebelum
+                                ditampilkan sebagai kejadian terverifikasi.
+                                {isGuest
+                                    ? ' Setelah terkirim, Anda akan mendapat kode laporan untuk memeriksa statusnya.'
+                                    : ' Anda masih bisa mengedit laporan selama statusnya menunggu verifikasi.'}
                             </Notice>
                         )}
                     </Reveal>
+
+                    {/* Batas pengiriman tercapai */}
+                    {errors.rate_limit && (
+                        <div
+                            role="alert"
+                            className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                        >
+                            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                            <p>{errors.rate_limit}</p>
+                        </div>
+                    )}
+
+                    {/* Data pelapor (hanya untuk pengunjung tanpa akun) */}
+                    {isGuest && (
+                        <Reveal delay={90}>
+                            <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                                <div className="mb-4 flex items-center gap-3">
+                                    <span className="h-6 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
+                                    <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                                        <User className="h-4 w-4 text-navy-500" />
+                                        Data pelapor
+                                    </h2>
+                                </div>
+
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label
+                                            htmlFor="reporter_name"
+                                            className="mb-1.5 block text-sm font-medium text-foreground"
+                                        >
+                                            Nama{' '}
+                                            <span className="font-normal text-muted-foreground">
+                                                (opsional)
+                                            </span>
+                                        </label>
+                                        <input
+                                            id="reporter_name"
+                                            type="text"
+                                            value={form.data.reporter_name}
+                                            onChange={(e) =>
+                                                form.setData(
+                                                    'reporter_name',
+                                                    e.target.value,
+                                                )
+                                            }
+                                            maxLength={100}
+                                            autoComplete="name"
+                                            placeholder="Nama Anda"
+                                            className={inputClass}
+                                        />
+                                        {errors.reporter_name && (
+                                            <p className="mt-1 text-xs text-red-600">
+                                                {errors.reporter_name}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label
+                                            htmlFor="reporter_phone"
+                                            className="mb-1.5 block text-sm font-medium text-foreground"
+                                        >
+                                            No. HP{' '}
+                                            <span className="font-normal text-muted-foreground">
+                                                (opsional)
+                                            </span>
+                                        </label>
+                                        <input
+                                            id="reporter_phone"
+                                            type="tel"
+                                            inputMode="tel"
+                                            value={form.data.reporter_phone}
+                                            onChange={(e) =>
+                                                form.setData(
+                                                    'reporter_phone',
+                                                    e.target.value,
+                                                )
+                                            }
+                                            maxLength={20}
+                                            autoComplete="tel"
+                                            placeholder="08xxxxxxxxxx"
+                                            className={inputClass}
+                                        />
+                                        {errors.reporter_phone && (
+                                            <p className="mt-1 text-xs text-red-600">
+                                                {errors.reporter_phone}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted-foreground">
+                                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                    Nama dan nomor HP hanya dilihat petugas
+                                    untuk konfirmasi dan tidak ditampilkan ke
+                                    publik. Lokasi kejadian ditampilkan sebagai
+                                    perkiraan.
+                                </p>
+                            </section>
+                        </Reveal>
+                    )}
+
+                    {/* Honeypot: tidak terlihat oleh warga, hanya diisi bot */}
+                    <div
+                        aria-hidden="true"
+                        className="absolute -left-[9999px] h-0 w-0 overflow-hidden"
+                    >
+                        <label htmlFor="website">Website</label>
+                        <input
+                            id="website"
+                            type="text"
+                            name="website"
+                            tabIndex={-1}
+                            autoComplete="off"
+                            value={form.data.website}
+                            onChange={(e) =>
+                                form.setData('website', e.target.value)
+                            }
+                        />
+                    </div>
 
                     {/* Form */}
                     {loading ? (
@@ -203,7 +351,11 @@ export default function Create({ types, areas }: Props) {
                     ) : (
                         <Reveal delay={120}>
                             <ReportForm
-                                form={form}
+                                form={
+                                    form as unknown as ComponentProps<
+                                        typeof ReportForm
+                                    >['form']
+                                }
                                 types={types}
                                 areas={areas}
                                 onSubmit={submit}

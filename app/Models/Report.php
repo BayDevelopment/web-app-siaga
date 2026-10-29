@@ -34,6 +34,9 @@ class Report extends Model
 
     public const SEVERITIES = ['low', 'medium', 'high', 'critical'];
 
+    /** Presisi koordinat untuk publik: 3 desimal (sekitar 110 meter). */
+    public const PUBLIC_COORD_PRECISION = 3;
+
     protected $fillable = [
         'code',
         'user_id',
@@ -132,5 +135,55 @@ class Report extends Model
     public function scopeStatus(Builder $query, string $status): Builder
     {
         return $query->where('status', $status);
+    }
+
+    /* Privasi lokasi */
+
+    /** Lokasi presisi hanya untuk admin/petugas dan pelapor sendiri. */
+    public function canSeeExactLocation(?User $viewer): bool
+    {
+        return $viewer !== null
+            && ($viewer->isStaff() || $viewer->id === $this->user_id);
+    }
+
+    /**
+     * Lokasi yang aman ditampilkan kepada $viewer.
+     * Publik: koordinat dibulatkan (~110 m) dan alamat jalan diganti nama wilayah.
+     *
+     * Eager load 'area.parent' di pemanggil untuk menghindari N+1.
+     *
+     * @return array{lat: float, lng: float, address: ?string, exact: bool}
+     */
+    public function locationFor(?User $viewer): array
+    {
+        if ($this->canSeeExactLocation($viewer)) {
+            return [
+                'lat'     => (float) $this->latitude,
+                'lng'     => (float) $this->longitude,
+                'address' => $this->address,
+                'exact'   => true,
+            ];
+        }
+
+        return [
+            'lat'     => round((float) $this->latitude, self::PUBLIC_COORD_PRECISION),
+            'lng'     => round((float) $this->longitude, self::PUBLIC_COORD_PRECISION),
+            'address' => $this->publicAddress(),
+            'exact'   => false,
+        ];
+    }
+
+    /** Alamat tingkat wilayah, mis. "RW 05, Kelurahan Sukajaya". */
+    public function publicAddress(): ?string
+    {
+        $area = $this->area;
+
+        if (! $area) {
+            return null;
+        }
+
+        $parent = $area->parent?->name;
+
+        return $parent ? "{$area->name}, {$parent}" : $area->name;
     }
 }

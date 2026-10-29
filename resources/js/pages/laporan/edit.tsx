@@ -1,22 +1,19 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, Info, Save } from 'lucide-react';
+import { Head, Link, useForm } from "@inertiajs/react";
+import { ArrowLeft, Info, Save } from "lucide-react";
 import {
     useEffect,
     useState,
     type CSSProperties,
     type FormEvent,
     type ReactNode,
-} from 'react';
+} from "react";
 
-import { StatusBadge } from '@/components/report/badges';
+import { StatusBadge } from "@/components/report/badges";
 import ReportForm, {
     type ReportFormData,
-} from '@/components/report/report-form';
-import type {
-    AreaOption,
-    DisasterType,
-    ReportPhoto,
-} from '@/lib/report';
+} from "@/components/report/report-form";
+import StatusPanel from "@/components/report/status-panel";
+import type { AreaOption, DisasterType, ReportPhoto } from "@/lib/report";
 
 type Report = {
     id: number;
@@ -38,6 +35,7 @@ type Props = {
     report: Report;
     types: DisasterType[];
     areas: AreaOption[];
+    can?: { update_status?: boolean };
 };
 
 /* ---------- Helper animasi & skeleton ---------- */
@@ -45,7 +43,7 @@ type Props = {
 function Reveal({
     children,
     delay = 0,
-    className = '',
+    className = "",
 }: {
     children: ReactNode;
     delay?: number;
@@ -117,19 +115,19 @@ function FormSkeleton() {
 
 /* ---------- Halaman ---------- */
 
-export default function Edit({ report, types, areas }: Props) {
+export default function Edit({ report, types, areas, can }: Props) {
     const loading = useFakeLoading(500);
 
     const form = useForm<ReportFormData>({
         disaster_type_id: String(report.disaster_type_id),
-        area_id: report.area_id ? String(report.area_id) : '',
-        title: report.title ?? '',
-        description: report.description ?? '',
+        area_id: report.area_id ? String(report.area_id) : "",
+        title: report.title ?? "",
+        description: report.description ?? "",
         latitude: String(report.latitude),
         longitude: String(report.longitude),
-        address: report.address ?? '',
-        severity: report.severity ?? '',
-        occurred_at: report.occurred_at ?? '',
+        address: report.address ?? "",
+        severity: report.severity ?? "",
+        occurred_at: report.occurred_at ?? "",
         photos: [],
         delete_photo_ids: [],
     });
@@ -139,7 +137,7 @@ export default function Edit({ report, types, areas }: Props) {
 
         // PUT dengan file tidak terbaca PHP, jadi dikirim sebagai POST
         // dengan _method=put (route-nya tetap Route::put).
-        form.transform((data) => ({ ...data, _method: 'put' }));
+        form.transform((data) => ({ ...data, _method: "put" }));
 
         form.post(`/laporan/${report.id}`, {
             forceFormData: true,
@@ -204,7 +202,7 @@ export default function Edit({ report, types, areas }: Props) {
                         </div>
                     </header>
 
-                    {report.status !== 'pending' && (
+                    {report.status !== "pending" && (
                         <Reveal delay={60}>
                             <div className="flex gap-3 rounded-2xl border border-sun-300/60 bg-sun-50 p-4 text-sun-600 dark:border-sun-500/20 dark:bg-sun-500/10 dark:text-sun-300">
                                 <Info className="mt-0.5 h-5 w-5 shrink-0" />
@@ -214,6 +212,16 @@ export default function Edit({ report, types, areas }: Props) {
                                     publik.
                                 </p>
                             </div>
+                        </Reveal>
+                    )}
+
+                    {/* Verifikasi & status: hanya admin/petugas */}
+                    {can?.update_status && (
+                        <Reveal delay={90}>
+                            <StatusPanel
+                                reportId={report.id}
+                                status={report.status}
+                            />
                         </Reveal>
                     )}
 

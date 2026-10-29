@@ -8,14 +8,22 @@ use Illuminate\Validation\Rule;
 
 class StoreReportRequest extends FormRequest
 {
+    /**
+     * Warga (guest) boleh melapor tanpa login.
+     * Spam dibatasi throttle:laporan di route dan honeypot di controller.
+     */
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        return true;
     }
 
     public function rules(): array
     {
         return [
+            // Data pelapor tanpa akun (diabaikan jika sudah login).
+            'reporter_name'  => ['nullable', 'string', 'max:100'],
+            'reporter_phone' => ['nullable', 'string', 'max:20', 'regex:/^[0-9+\-\s()]+$/'],
+
             'disaster_type_id' => [
                 'required', 'integer',
                 Rule::exists('disaster_types', 'id')->where('is_active', true),
@@ -43,6 +51,8 @@ class StoreReportRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'reporter_name'    => 'nama pelapor',
+            'reporter_phone'   => 'nomor HP',
             'disaster_type_id' => 'jenis kejadian',
             'area_id'          => 'wilayah',
             'title'            => 'judul',
@@ -58,6 +68,7 @@ class StoreReportRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'reporter_phone.regex'        => 'Nomor HP hanya boleh berisi angka, spasi, dan tanda + - ( ).',
             'occurred_at.before_or_equal' => 'Waktu kejadian tidak boleh di masa depan.',
             'photos.max'                  => 'Maksimal 5 foto per laporan.',
             'photos.*.max'                => 'Ukuran tiap foto maksimal 4 MB.',
