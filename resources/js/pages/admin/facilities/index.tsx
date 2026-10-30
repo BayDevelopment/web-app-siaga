@@ -12,7 +12,6 @@ import {
     X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -48,7 +47,7 @@ type Props = {
     facilities?: Facility[] | null;
 };
 
-type Tone = 'navy' | 'sea' | 'sun' | 'forest';
+type TypeFilter = 'all' | string;
 
 /* ---------- Konstanta ---------- */
 
@@ -65,25 +64,14 @@ const facilityTypeLabels: Record<string, string> = {
     clinic: 'Klinik',
 };
 
-// Kelas ditulis utuh (bukan disusun dinamis) agar terbaca oleh Tailwind.
-const TONES: Record<Tone, { icon: string; glow: string }> = {
-    navy: {
-        icon: 'bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-300',
-        glow: 'hover:shadow-navy-500/10',
-    },
-    sea: {
-        icon: 'bg-sea-300/30 text-sea-600 dark:bg-sea-500/15 dark:text-sea-300',
-        glow: 'hover:shadow-sea-500/10',
-    },
-    sun: {
-        icon: 'bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300',
-        glow: 'hover:shadow-sun-500/10',
-    },
-    forest: {
-        icon: 'bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-300',
-        glow: 'hover:shadow-forest-500/10',
-    },
-};
+const FILTERS: { key: TypeFilter; label: string }[] = [
+    { key: 'all', label: 'Semua' },
+    { key: 'evacuation_point', label: 'Evakuasi' },
+    { key: 'posko', label: 'Posko' },
+    { key: 'fire_post', label: 'Damkar' },
+    { key: 'hydrant', label: 'Hidran' },
+    { key: 'clinic', label: 'Klinik' },
+];
 
 /* ---------- Helper ---------- */
 
@@ -97,23 +85,6 @@ function formatCoord(value: number | string | null): string {
 
 function typeLabel(type: string): string {
     return facilityTypeLabels[type] ?? type;
-}
-
-function Reveal({
-    children,
-    delay = 0,
-}: {
-    children: ReactNode;
-    delay?: number;
-}) {
-    return (
-        <div
-            className="animate-fade-in-up"
-            style={{ animationDelay: `${delay}ms` } as CSSProperties}
-        >
-            {children}
-        </div>
-    );
 }
 
 /**
@@ -134,17 +105,20 @@ function useFakeLoading(ms = 650) {
 
 /* ---------- Skeleton ---------- */
 
-function StatCardSkeleton() {
+function StatCardSkeleton({ delay }: { delay: number }) {
     return (
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div
+            className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm"
+            style={{ animationDelay: `${delay}ms` }}
+        >
             <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 space-y-3">
                     <div className="skeleton h-3.5 w-28" />
                     <div className="skeleton h-8 w-16" />
+                    <div className="skeleton h-3 w-32" />
                 </div>
                 <div className="skeleton size-11 rounded-xl" />
             </div>
-            <div className="mt-3 skeleton h-3 w-32" />
         </div>
     );
 }
@@ -155,7 +129,7 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
             {Array.from({ length: rows }).map((_, index) => (
                 <div
                     key={index}
-                    className="grid min-w-[900px] grid-cols-[2fr_1.2fr_1.3fr_1.4fr_0.9fr_1.3fr] items-center gap-4 px-6 py-4"
+                    className="grid min-w-[900px] grid-cols-[2fr_1.2fr_1.3fr_1.4fr_0.9fr_1.3fr] items-center gap-4 px-5 py-4"
                 >
                     <div className="flex items-center gap-3">
                         <div className="skeleton size-10 shrink-0 rounded-xl" />
@@ -213,40 +187,45 @@ function CardListSkeleton({ rows = 4 }: { rows?: number }) {
 function StatCard({
     label,
     value,
-    hint,
+    description,
     icon: Icon,
-    tone,
+    toneClass,
+    valueClass,
+    delay,
 }: {
     label: string;
     value: number;
-    hint: string;
+    description: string;
     icon: LucideIcon;
-    tone: Tone;
+    toneClass: string;
+    valueClass?: string;
+    delay: number;
 }) {
-    const styles = TONES[tone];
-
     return (
         <div
-            className={`group h-full rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg dark:hover:border-navy-500/40 ${styles.glow}`}
+            className="group h-full animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40"
+            style={{ animationDelay: `${delay}ms` }}
         >
             <div className="flex items-start justify-between gap-3">
-                <div>
-                    <p className="text-sm font-medium text-muted-foreground">
+                <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-muted-foreground">
                         {label}
                     </p>
-                    <p className="mt-1 text-3xl font-bold text-foreground">
+                    <p
+                        className={`mt-1 text-3xl font-bold tracking-tight ${valueClass ?? 'text-foreground'}`}
+                    >
                         {value}
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        {hint}
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {description}
                     </p>
                 </div>
 
-                <div
-                    className={`flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 ${styles.icon}`}
+                <span
+                    className={`flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${toneClass}`}
                 >
                     <Icon className="size-5" />
-                </div>
+                </span>
             </div>
         </div>
     );
@@ -254,7 +233,8 @@ function StatCard({
 
 function TypeBadge({ type }: { type: string }) {
     return (
-        <span className="inline-flex rounded-full bg-navy-100 px-3 py-1 text-xs font-semibold text-navy-700 dark:bg-navy-500/15 dark:text-navy-300">
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-navy-50 px-2.5 py-1 text-xs font-medium text-navy-600 dark:bg-navy-500/15 dark:text-navy-400">
+            <Building2 className="size-3.5" />
             {typeLabel(type)}
         </span>
     );
@@ -262,12 +242,12 @@ function TypeBadge({ type }: { type: string }) {
 
 function StatusBadge({ active }: { active: boolean }) {
     return active ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-forest-100 px-3 py-1 text-xs font-semibold text-forest-600 dark:bg-forest-500/15 dark:text-forest-300">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-forest-100 px-2.5 py-1 text-xs font-semibold text-forest-800 dark:bg-forest-500/15 dark:text-forest-400">
             <span className="size-1.5 rounded-full bg-forest-500" />
             Aktif
         </span>
     ) : (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
             <span className="size-1.5 rounded-full bg-muted-foreground" />
             Tidak Aktif
         </span>
@@ -276,9 +256,9 @@ function StatusBadge({ active }: { active: boolean }) {
 
 function FacilityIcon() {
     return (
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-300">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400">
             <Building2 className="size-5" />
-        </div>
+        </span>
     );
 }
 
@@ -293,7 +273,7 @@ function ActionButtons({
         <div className="flex justify-end gap-2">
             <Link
                 href={`/admin/facilities/${facility.id}/edit`}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-navy-500/10 ${FOCUS_RING}`}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10 dark:hover:text-navy-400 ${FOCUS_RING}`}
             >
                 <Edit className="size-3.5" />
                 Edit
@@ -303,7 +283,7 @@ function ActionButtons({
                 type="button"
                 onClick={() => onDelete(facility)}
                 aria-label={`Hapus ${facility.name}`}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-muted-foreground transition hover:-translate-y-0.5 hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive-foreground ${FOCUS_RING}`}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-muted-foreground transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:border-red-500/30 dark:hover:bg-red-500/10 dark:hover:text-red-300 ${FOCUS_RING}`}
             >
                 <Trash2 className="size-3.5" />
                 Hapus
@@ -312,27 +292,29 @@ function ActionButtons({
     );
 }
 
-function EmptyState({ search }: { search: string }) {
+function EmptyState({ isFiltering }: { isFiltering: boolean }) {
     return (
         <div className="flex animate-fade-in flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-navy-100 text-navy-500 dark:bg-navy-500/15 dark:text-navy-300">
-                <Building2 className="size-7" />
+            <div className="flex size-16 animate-float items-center justify-center rounded-2xl bg-sun-100 text-sun-600 ring-1 ring-sun-300/50 dark:bg-sun-500/15 dark:text-sun-300 dark:ring-sun-500/20">
+                <Building2 className="size-8" />
             </div>
 
-            <h3 className="mt-4 text-base font-semibold text-foreground">
-                Tidak ada fasilitas
+            <h3 className="mt-4 text-sm font-semibold text-foreground">
+                {isFiltering
+                    ? 'Fasilitas tidak ditemukan'
+                    : 'Belum ada fasilitas darurat'}
             </h3>
 
-            <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                {search
-                    ? 'Tidak ditemukan fasilitas yang sesuai dengan pencarian.'
-                    : 'Belum ada fasilitas darurat yang ditambahkan.'}
+            <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                {isFiltering
+                    ? 'Coba ubah kata kunci atau filter jenis fasilitas.'
+                    : 'Tambahkan fasilitas darurat untuk menampilkannya pada peta kejadian.'}
             </p>
 
-            {!search && (
+            {!isFiltering && (
                 <Link
                     href="/admin/facilities/create"
-                    className={`mt-5 inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-navy-600 to-sea-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-navy-500/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-navy-500/25 ${FOCUS_RING}`}
+                    className={`mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${FOCUS_RING}`}
                 >
                     <Plus className="size-4" />
                     Tambah Fasilitas
@@ -349,6 +331,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
     const facilities = facilitiesProp ?? EMPTY_FACILITIES;
 
     const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
     const loading = useFakeLoading(650);
 
     const counts = useMemo(() => {
@@ -366,20 +349,25 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
     const filteredFacilities = useMemo(() => {
         const keyword = search.toLowerCase().trim();
 
-        if (!keyword) {
-            return facilities;
-        }
+        return facilities.filter((facility) => {
+            if (typeFilter !== 'all' && facility.type !== typeFilter) {
+                return false;
+            }
 
-        return facilities.filter(
-            (facility) =>
+            if (!keyword) {
+                return true;
+            }
+
+            return (
                 facility.name.toLowerCase().includes(keyword) ||
                 facility.type.toLowerCase().includes(keyword) ||
                 typeLabel(facility.type).toLowerCase().includes(keyword) ||
                 facility.address?.toLowerCase().includes(keyword) ||
                 facility.contact_phone?.toLowerCase().includes(keyword) ||
-                facility.area?.name.toLowerCase().includes(keyword),
-        );
-    }, [facilities, search]);
+                facility.area?.name.toLowerCase().includes(keyword)
+            );
+        });
+    }, [facilities, search, typeFilter]);
 
     // Dialog konfirmasi hapus. Target tidak dikosongkan saat dialog ditutup
     // supaya teks tidak hilang selama animasi tutup.
@@ -407,114 +395,135 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
         });
     };
 
-    const keyword = search.trim();
+    const isFiltering = search.trim() !== '' || typeFilter !== 'all';
+
+    const stats = [
+        {
+            label: 'Total Fasilitas',
+            value: facilities.length,
+            description: 'Semua data fasilitas',
+            icon: Building2,
+            toneClass:
+                'bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400',
+        },
+        {
+            label: 'Titik Evakuasi',
+            value: counts.evacuation_point,
+            description: 'Lokasi evakuasi tersedia',
+            icon: MapPin,
+            toneClass:
+                'bg-sea-300/30 text-sea-500 dark:bg-sea-500/15 dark:text-sea-300',
+            valueClass: 'text-sea-500 dark:text-sea-300',
+        },
+        {
+            label: 'Posko',
+            value: counts.posko,
+            description: 'Posko penanganan darurat',
+            icon: Building2,
+            toneClass:
+                'bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300',
+            valueClass: 'text-sun-600 dark:text-sun-400',
+        },
+        {
+            label: 'Pos Damkar',
+            value: counts.fire_post,
+            description: 'Titik pemadam kebakaran',
+            icon: Building2,
+            toneClass:
+                'bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-400',
+            valueClass: 'text-forest-600 dark:text-forest-400',
+        },
+    ];
 
     return (
         <>
             <Head title="Fasilitas Darurat" />
 
-            <div className="relative isolate flex min-w-0 flex-1 flex-col gap-6 overflow-hidden p-4 md:p-6">
-                {/* Dekorasi latar mengikuti dashboard SIAGA-W */}
+            <div className="relative min-h-screen overflow-hidden bg-background">
+                {/* Blob latar halaman */}
                 <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
-                >
-                    <div className="blob -top-24 -left-24 h-72 w-72 animate-blob bg-navy-400/15 dark:bg-navy-400/10" />
-                    <div className="blob top-1/3 -right-28 h-80 w-80 animate-blob-slow bg-sun-300/15 dark:bg-sun-400/10" />
-                    <div className="blob -bottom-28 left-1/3 h-72 w-72 animate-blob bg-forest-400/10 dark:bg-forest-500/10" />
-                </div>
+                    className="pointer-events-none absolute -top-32 -left-24 size-72 rounded-full bg-navy-400/5 blur-3xl dark:bg-navy-500/10"
+                />
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute top-1/3 -right-24 size-80 rounded-full bg-sea-400/5 blur-3xl dark:bg-sea-500/10"
+                />
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute bottom-0 left-1/3 size-72 rounded-full bg-forest-400/5 blur-3xl dark:bg-forest-500/10"
+                />
 
-                {/* HEADER */}
-                <Reveal>
-                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                        <div>
-                            <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-navy-200 bg-navy-50 px-3 py-1 text-xs font-semibold text-navy-700 dark:border-navy-500/20 dark:bg-navy-500/10 dark:text-navy-300">
-                                <Building2 className="size-3.5" />
-                                Master Fasilitas
+                <div className="relative mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8 xl:px-8">
+                    {/* =====================================================
+                        HERO
+                    ====================================================== */}
+                    <section className="relative animate-fade-in overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-sm md:p-7">
+                        <div className="blob -top-16 -right-10 size-64 animate-blob bg-sea-400/20 dark:bg-sea-500/10" />
+                        <div className="blob -bottom-20 left-1/3 size-56 animate-blob-slow bg-sun-400/15 dark:bg-sun-500/10" />
+                        <div className="blob top-1/2 right-1/4 size-40 animate-blob bg-forest-400/10 dark:bg-forest-500/10" />
+
+                        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-4">
+                                <span className="flex size-14 shrink-0 animate-float items-center justify-center rounded-2xl bg-navy-100 text-navy-600 ring-1 ring-navy-200 dark:bg-navy-500/15 dark:text-navy-400 dark:ring-navy-500/30">
+                                    <Building2 className="size-7" />
+                                </span>
+
+                                <div>
+                                    <p className="mb-1 text-xs font-semibold tracking-wider text-navy-600 uppercase dark:text-navy-400">
+                                        Master Fasilitas
+                                    </p>
+                                    <h1 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">
+                                        Fasilitas Darurat
+                                    </h1>
+                                    <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                                        Kelola titik fasilitas yang dapat
+                                        digunakan untuk mendukung penanganan
+                                        keadaan darurat di wilayah.
+                                    </p>
+                                </div>
                             </div>
 
-                            <h1 className="text-2xl font-bold tracking-tight text-gradient-brand md:text-3xl">
-                                Fasilitas Darurat
-                            </h1>
-
-                            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                                Kelola titik fasilitas yang dapat digunakan untuk
-                                mendukung penanganan keadaan darurat di wilayah.
-                            </p>
+                            <Link
+                                href="/admin/facilities/create"
+                                className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md dark:bg-sun-400 dark:hover:bg-sun-300 ${FOCUS_RING}`}
+                            >
+                                <Plus className="size-4" />
+                                Tambah Fasilitas
+                            </Link>
                         </div>
+                    </section>
 
-                        <Link
-                            href="/admin/facilities/create"
-                            className={`group inline-flex items-center justify-center gap-2 rounded-xl bg-linear-to-r from-navy-600 to-sea-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-navy-500/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-navy-500/25 ${FOCUS_RING}`}
-                        >
-                            <Plus className="size-4 transition-transform duration-300 group-hover:rotate-90" />
-                            Tambah Fasilitas
-                        </Link>
-                    </div>
-                </Reveal>
+                    {/* =====================================================
+                        STATISTIK
+                    ====================================================== */}
+                    <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {loading
+                            ? stats.map((stat, index) => (
+                                  <StatCardSkeleton
+                                      key={stat.label}
+                                      delay={index * 70}
+                                  />
+                              ))
+                            : stats.map((stat, index) => (
+                                  <StatCard
+                                      key={stat.label}
+                                      {...stat}
+                                      delay={index * 70}
+                                  />
+                              ))}
+                    </section>
 
-                {/* RINGKASAN */}
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {loading ? (
-                        Array.from({ length: 4 }).map((_, index) => (
-                            <Reveal key={index} delay={index * 70}>
-                                <StatCardSkeleton />
-                            </Reveal>
-                        ))
-                    ) : (
-                        <>
-                            <Reveal delay={0}>
-                                <StatCard
-                                    label="Total Fasilitas"
-                                    value={facilities.length}
-                                    hint="Semua data fasilitas"
-                                    icon={Building2}
-                                    tone="navy"
-                                />
-                            </Reveal>
-
-                            <Reveal delay={70}>
-                                <StatCard
-                                    label="Titik Evakuasi"
-                                    value={counts.evacuation_point}
-                                    hint="Lokasi evakuasi tersedia"
-                                    icon={MapPin}
-                                    tone="sea"
-                                />
-                            </Reveal>
-
-                            <Reveal delay={140}>
-                                <StatCard
-                                    label="Posko"
-                                    value={counts.posko}
-                                    hint="Posko penanganan darurat"
-                                    icon={Building2}
-                                    tone="sun"
-                                />
-                            </Reveal>
-
-                            <Reveal delay={210}>
-                                <StatCard
-                                    label="Pos Damkar"
-                                    value={counts.fire_post}
-                                    hint="Titik pemadam kebakaran"
-                                    icon={Building2}
-                                    tone="forest"
-                                />
-                            </Reveal>
-                        </>
-                    )}
-                </div>
-
-                {/* DAFTAR */}
-                <Reveal delay={260}>
-                    <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                    {/* =====================================================
+                        DAFTAR FASILITAS
+                    ====================================================== */}
+                    <section className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm [animation-delay:260ms]">
                         {/* Toolbar */}
-                        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-col gap-4 border-b border-border p-4 md:p-5 lg:flex-row lg:items-end lg:justify-between">
                             <div className="flex items-start gap-3">
                                 <span className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
                                 <div>
-                                    <h2 className="text-sm font-semibold text-foreground">
+                                    <h2 className="font-semibold text-foreground">
                                         Daftar Fasilitas
                                     </h2>
                                     <p className="mt-0.5 text-xs text-muted-foreground">
@@ -525,33 +534,63 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                 </div>
                             </div>
 
-                            <div className="relative w-full lg:max-w-md">
-                                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                                <div className="relative min-w-0 flex-1 sm:min-w-[280px]">
+                                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                    <input
+                                        type="search"
+                                        value={search}
+                                        onChange={(event) =>
+                                            setSearch(event.target.value)
+                                        }
+                                        placeholder="Cari nama, jenis, wilayah, alamat..."
+                                        aria-label="Cari fasilitas"
+                                        className="h-10 w-full rounded-xl border border-border bg-background pr-9 pl-9 text-sm text-foreground transition outline-none placeholder:text-muted-foreground focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20 dark:focus:ring-navy-400/30"
+                                    />
+                                    {search && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearch('')}
+                                            aria-label="Hapus pencarian"
+                                            className={`absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground ${FOCUS_RING}`}
+                                        >
+                                            <X className="size-3.5" />
+                                        </button>
+                                    )}
+                                </div>
 
-                                <input
-                                    type="text"
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
-                                    }
-                                    placeholder="Cari nama, jenis, wilayah, atau alamat..."
-                                    aria-label="Cari fasilitas"
-                                    className="h-10 w-full rounded-xl border border-border bg-background pr-9 pl-10 text-sm text-foreground transition outline-none placeholder:text-muted-foreground focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20"
-                                />
+                                <div
+                                    role="tablist"
+                                    aria-label="Filter jenis fasilitas"
+                                    className="flex overflow-x-auto rounded-xl border border-border bg-muted/50 p-1"
+                                >
+                                    {FILTERS.map((filter) => {
+                                        const active = typeFilter === filter.key;
 
-                                {search && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSearch('')}
-                                        aria-label="Hapus pencarian"
-                                        className={`absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted ${FOCUS_RING}`}
-                                    >
-                                        <X className="size-3.5" />
-                                    </button>
-                                )}
+                                        return (
+                                            <button
+                                                key={filter.key}
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={active}
+                                                onClick={() =>
+                                                    setTypeFilter(filter.key)
+                                                }
+                                                className={`rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${FOCUS_RING} ${
+                                                    active
+                                                        ? 'bg-card text-navy-600 shadow-sm dark:text-navy-400'
+                                                        : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                            >
+                                                {filter.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
+                        {/* Konten */}
                         {loading ? (
                             <>
                                 <div className="lg:hidden">
@@ -562,7 +601,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                 </div>
                             </>
                         ) : filteredFacilities.length === 0 ? (
-                            <EmptyState search={keyword} />
+                            <EmptyState isFiltering={isFiltering} />
                         ) : (
                             <>
                                 {/* Mobile: kartu */}
@@ -570,17 +609,17 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                     {filteredFacilities.map((facility) => (
                                         <li
                                             key={facility.id}
-                                            className="space-y-3 p-4"
+                                            className="group p-4 transition-colors hover:bg-navy-50/60 dark:hover:bg-navy-500/10"
                                         >
                                             <div className="flex items-start gap-3">
                                                 <FacilityIcon />
 
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="truncate font-semibold text-foreground">
+                                                    <p className="truncate text-sm font-semibold text-foreground">
                                                         {facility.name}
                                                     </p>
                                                     {facility.address && (
-                                                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                                                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                                                             {facility.address}
                                                         </p>
                                                     )}
@@ -591,12 +630,12 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                 />
                                             </div>
 
-                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                                            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
                                                 <TypeBadge type={facility.type} />
 
                                                 <span>
                                                     {facility.area
-                                                        ? `${facility.area.name} (${facility.area.type})`
+                                                        ? `${facility.area.name} (${facility.area.type.toUpperCase()})`
                                                         : 'Semua wilayah'}
                                                 </span>
 
@@ -619,35 +658,40 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                 </span>
                                             </div>
 
-                                            <ActionButtons
-                                                facility={facility}
-                                                onDelete={handleDelete}
-                                            />
+                                            <div className="mt-3">
+                                                <ActionButtons
+                                                    facility={facility}
+                                                    onDelete={handleDelete}
+                                                />
+                                            </div>
                                         </li>
                                     ))}
                                 </ul>
 
                                 {/* Desktop: tabel */}
                                 <div className="hidden overflow-x-auto lg:block">
-                                    <table className="w-full min-w-[900px] text-left text-sm">
-                                        <thead className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
+                                    <table
+                                        className="w-full min-w-[900px] text-left text-sm"
+                                        aria-label="Daftar fasilitas darurat"
+                                    >
+                                        <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
                                             <tr>
-                                                <th className="px-6 py-3.5 font-semibold">
+                                                <th className="px-5 py-3.5 font-semibold">
                                                     Fasilitas
                                                 </th>
-                                                <th className="px-6 py-3.5 font-semibold">
+                                                <th className="px-5 py-3.5 font-semibold">
                                                     Jenis
                                                 </th>
-                                                <th className="px-6 py-3.5 font-semibold">
+                                                <th className="px-5 py-3.5 font-semibold">
                                                     Wilayah
                                                 </th>
-                                                <th className="px-6 py-3.5 font-semibold">
+                                                <th className="px-5 py-3.5 font-semibold">
                                                     Lokasi
                                                 </th>
-                                                <th className="px-6 py-3.5 font-semibold">
+                                                <th className="px-5 py-3.5 font-semibold">
                                                     Status
                                                 </th>
-                                                <th className="px-6 py-3.5 text-right font-semibold">
+                                                <th className="px-5 py-3.5 text-right font-semibold">
                                                     Aksi
                                                 </th>
                                             </tr>
@@ -658,9 +702,17 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                 (facility) => (
                                                     <tr
                                                         key={facility.id}
-                                                        className="transition-colors hover:bg-navy-50/70 dark:hover:bg-navy-500/5"
+                                                        className="group transition-colors hover:bg-navy-50/60 dark:hover:bg-navy-500/10"
                                                     >
-                                                        <td className="px-6 py-4">
+                                                        <td className="relative px-5 py-4">
+                                                            <span
+                                                                aria-hidden
+                                                                className={`absolute inset-y-2 left-0 w-1 rounded-r-full ${
+                                                                    facility.is_active
+                                                                        ? 'bg-forest-500'
+                                                                        : 'bg-muted-foreground/40'
+                                                                }`}
+                                                            />
                                                             <div className="flex items-center gap-3">
                                                                 <FacilityIcon />
 
@@ -671,7 +723,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                                         }
                                                                     </p>
                                                                     {facility.address && (
-                                                                        <p className="mt-0.5 max-w-xs truncate text-xs text-muted-foreground">
+                                                                        <p className="mt-1 max-w-xs truncate text-xs text-muted-foreground">
                                                                             {
                                                                                 facility.address
                                                                             }
@@ -681,7 +733,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                             </div>
                                                         </td>
 
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-5 py-4">
                                                             <TypeBadge
                                                                 type={
                                                                     facility.type
@@ -698,7 +750,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                             )}
                                                         </td>
 
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-5 py-4">
                                                             {facility.area ? (
                                                                 <div>
                                                                     <p className="font-medium text-foreground">
@@ -708,7 +760,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                                                 .name
                                                                         }
                                                                     </p>
-                                                                    <p className="text-xs text-muted-foreground capitalize">
+                                                                    <p className="text-xs text-muted-foreground uppercase">
                                                                         {
                                                                             facility
                                                                                 .area
@@ -717,14 +769,14 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                                     </p>
                                                                 </div>
                                                             ) : (
-                                                                <span className="text-muted-foreground">
+                                                                <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
                                                                     Semua
                                                                     wilayah
                                                                 </span>
                                                             )}
                                                         </td>
 
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-5 py-4">
                                                             <div className="flex items-center gap-2 text-muted-foreground">
                                                                 <MapPin className="size-4 shrink-0 text-sea-500" />
                                                                 <div className="text-xs leading-5 tabular-nums">
@@ -742,7 +794,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                             </div>
                                                         </td>
 
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-5 py-4">
                                                             <StatusBadge
                                                                 active={
                                                                     facility.is_active
@@ -750,7 +802,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                             />
                                                         </td>
 
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-5 py-4">
                                                             <ActionButtons
                                                                 facility={
                                                                     facility
@@ -769,10 +821,12 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                             </>
                         )}
                     </section>
-                </Reveal>
+                </div>
             </div>
 
-            {/* KONFIRMASI HAPUS */}
+            {/* =====================================================
+                KONFIRMASI HAPUS
+            ====================================================== */}
             <Dialog
                 open={deleteOpen}
                 onOpenChange={(open) => {
@@ -783,7 +837,7 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
             >
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive-foreground dark:bg-destructive-foreground/15">
+                        <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
                             <TriangleAlert className="size-6" />
                         </div>
 

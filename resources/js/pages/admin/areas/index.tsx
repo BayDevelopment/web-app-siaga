@@ -1,4 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
+import type { LucideIcon } from 'lucide-react';
 import {
     Building2,
     ChevronDown,
@@ -12,11 +13,16 @@ import {
     Search,
     Trash2,
     Users,
+    X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+/* ---------- Tipe ---------- */
+
 type AreaType = 'kelurahan' | 'rw' | 'rt';
+type TypeFilter = 'all' | AreaType;
+type StatusFilter = 'all' | 'active' | 'inactive';
 
 type Area = {
     id: number;
@@ -35,11 +41,16 @@ type Props = {
     areas: Area[];
 };
 
+/* ---------- Konstanta ---------- */
+
+const FOCUS_RING =
+    'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50';
+
 const TYPE_CONFIG: Record<
     AreaType,
     {
         label: string;
-        icon: typeof Building2;
+        icon: LucideIcon;
         badge: string;
         iconBox: string;
     }
@@ -67,95 +78,24 @@ const TYPE_CONFIG: Record<
     },
 };
 
-function TypeBadge({ type }: { type: AreaType }) {
-    const config = TYPE_CONFIG[type];
-    const Icon = config.icon;
+const DEPTH: Record<AreaType, number> = {
+    kelurahan: 0,
+    rw: 1,
+    rt: 2,
+};
 
-    return (
-        <span
-            className={[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-                config.badge,
-            ].join(' ')}
-        >
-            <Icon className="size-3.5" />
-            {config.label}
-        </span>
-    );
-}
+const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
+    { key: 'all', label: 'Semua' },
+    { key: 'kelurahan', label: 'Kelurahan' },
+    { key: 'rw', label: 'RW' },
+    { key: 'rt', label: 'RT' },
+];
 
-function StatusBadge({ active }: { active: boolean }) {
-    return (
-        <span
-            className={[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-                active
-                    ? 'bg-forest-100 text-forest-800 dark:bg-forest-500/15 dark:text-forest-400'
-                    : 'bg-muted text-muted-foreground',
-            ].join(' ')}
-        >
-            <span
-                className={[
-                    'size-1.5 rounded-full',
-                    active ? 'bg-forest-500' : 'bg-muted-foreground/50',
-                ].join(' ')}
-            />
-            {active ? 'Aktif' : 'Nonaktif'}
-        </span>
-    );
-}
-
-function StatCard({
-    label,
-    value,
-    description,
-    icon: Icon,
-    tone,
-    delay,
-}: {
-    label: string;
-    value: number;
-    description: string;
-    icon: typeof Building2;
-    tone: 'navy' | 'sea' | 'forest' | 'sun';
-    delay: number;
-}) {
-    const tones = {
-        navy: 'bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400',
-        sea: 'bg-sea-300/30 text-navy-600 dark:bg-sea-400/15 dark:text-sea-300',
-        forest: 'bg-forest-100 text-forest-800 dark:bg-forest-500/15 dark:text-forest-400',
-        sun: 'bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-400',
-    };
-
-    return (
-        <div
-            className="animate-fade-in-up group rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            style={{ animationDelay: `${delay}ms` }}
-        >
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-xs font-medium text-muted-foreground">
-                        {label}
-                    </p>
-
-                    <p className="mt-1 text-3xl font-bold tracking-tight">
-                        {value}
-                    </p>
-
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        {description}
-                    </p>
-                </div>
-
-                <div
-                    className={`flex size-11 items-center justify-center rounded-xl transition group-hover:scale-110 ${tones[tone]}`}
-                >
-                    <Icon className="size-5" />
-                </div>
-            </div>
-        </div>
-    );
-}
+const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
+    { key: 'all', label: 'Semua status' },
+    { key: 'active', label: 'Aktif' },
+    { key: 'inactive', label: 'Nonaktif' },
+];
 
 function getChildType(type: AreaType): AreaType | null {
     if (type === 'kelurahan') {
@@ -169,11 +109,128 @@ function getChildType(type: AreaType): AreaType | null {
     return null;
 }
 
-const DEPTH: Record<AreaType, number> = {
-    kelurahan: 0,
-    rw: 1,
-    rt: 2,
-};
+/* ---------- Komponen kecil (di luar halaman agar tidak di-remount) ---------- */
+
+function StatCard({
+    label,
+    value,
+    description,
+    icon: Icon,
+    toneClass,
+    valueClass,
+    delay,
+}: {
+    label: string;
+    value: number;
+    description: string;
+    icon: LucideIcon;
+    toneClass: string;
+    valueClass?: string;
+    delay: number;
+}) {
+    return (
+        <div
+            className="group h-full animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-navy-200 hover:shadow-lg hover:shadow-navy-500/10 dark:hover:border-navy-500/40"
+            style={{ animationDelay: `${delay}ms` }}
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-muted-foreground">
+                        {label}
+                    </p>
+                    <p
+                        className={`mt-1 text-3xl font-bold tracking-tight ${valueClass ?? 'text-foreground'}`}
+                    >
+                        {value}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {description}
+                    </p>
+                </div>
+
+                <span
+                    className={`flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${toneClass}`}
+                >
+                    <Icon className="size-5" />
+                </span>
+            </div>
+        </div>
+    );
+}
+
+function TypeBadge({ type }: { type: AreaType }) {
+    const config = TYPE_CONFIG[type];
+    const Icon = config.icon;
+
+    return (
+        <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${config.badge}`}
+        >
+            <Icon className="size-3.5" />
+            {config.label}
+        </span>
+    );
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+    return (
+        <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                active
+                    ? 'bg-forest-100 text-forest-800 dark:bg-forest-500/15 dark:text-forest-400'
+                    : 'bg-muted text-muted-foreground'
+            }`}
+        >
+            <span
+                className={`size-1.5 rounded-full ${
+                    active ? 'bg-forest-500' : 'bg-muted-foreground/50'
+                }`}
+            />
+            {active ? 'Aktif' : 'Nonaktif'}
+        </span>
+    );
+}
+
+function Segmented<T extends string>({
+    options,
+    value,
+    onChange,
+    label,
+}: {
+    options: { key: T; label: string }[];
+    value: T;
+    onChange: (value: T) => void;
+    label: string;
+}) {
+    return (
+        <div
+            role="tablist"
+            aria-label={label}
+            className="flex overflow-x-auto rounded-xl border border-border bg-muted/50 p-1"
+        >
+            {options.map((option) => {
+                const active = value === option.key;
+
+                return (
+                    <button
+                        key={option.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => onChange(option.key)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition ${FOCUS_RING} ${
+                            active
+                                ? 'bg-card text-navy-600 shadow-sm dark:text-navy-400'
+                                : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        {option.label}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 function AreaNode({
     area,
@@ -209,10 +266,9 @@ function AreaNode({
     return (
         <div>
             <div
-                className={[
-                    'group relative border-b border-border transition-colors last:border-b-0 hover:bg-navy-50 dark:hover:bg-navy-500/10',
-                    depth === 0 ? 'bg-card' : 'bg-muted/20',
-                ].join(' ')}
+                className={`group relative border-b border-border transition-colors last:border-b-0 hover:bg-navy-50/60 dark:hover:bg-navy-500/10 ${
+                    depth === 0 ? 'bg-card' : 'bg-muted/20'
+                }`}
             >
                 {/* garis hierarki */}
                 {depth > 0 && (
@@ -237,12 +293,12 @@ function AreaNode({
                                     ? 'Tutup wilayah'
                                     : 'Buka wilayah'
                             }
-                            className={[
-                                'relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg transition',
+                            aria-expanded={expanded.has(area.id)}
+                            className={`relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg transition ${FOCUS_RING} ${
                                 hasChildren
                                     ? 'hover:bg-navy-100 dark:hover:bg-navy-500/20'
-                                    : 'pointer-events-none opacity-0',
-                            ].join(' ')}
+                                    : 'pointer-events-none opacity-0'
+                            }`}
                         >
                             {expanded.has(area.id) ? (
                                 <ChevronDown className="size-4 text-muted-foreground" />
@@ -260,7 +316,7 @@ function AreaNode({
 
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <h3 className="truncate font-semibold">
+                                    <h3 className="truncate font-semibold text-foreground">
                                         {area.name}
                                     </h3>
 
@@ -305,7 +361,7 @@ function AreaNode({
                         {childHref && (
                             <Link
                                 href={childHref}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-navy-500/10"
+                                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10 dark:hover:text-navy-400 ${FOCUS_RING}`}
                             >
                                 <Plus className="size-3.5" />
                                 {childLabel}
@@ -315,7 +371,7 @@ function AreaNode({
                         {area.slug && (
                             <Link
                                 href={`/peta/${area.slug}`}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold transition hover:-translate-y-0.5 hover:border-sea-300 hover:bg-sea-300/20 hover:text-navy-600"
+                                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-sea-300 hover:bg-sea-300/20 hover:text-navy-600 dark:hover:text-sea-300 ${FOCUS_RING}`}
                             >
                                 <MapIcon className="size-3.5" />
                                 <span className="hidden md:inline">Peta</span>
@@ -324,7 +380,7 @@ function AreaNode({
 
                         <Link
                             href={`/admin/areas/${area.id}/edit`}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:bg-navy-500/10"
+                            className={`inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10 dark:hover:text-navy-400 ${FOCUS_RING}`}
                         >
                             <Edit3 className="size-3.5" />
                             <span className="hidden md:inline">Edit</span>
@@ -333,7 +389,7 @@ function AreaNode({
                         <button
                             type="button"
                             onClick={() => onDelete(area)}
-                            className="inline-flex size-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
+                            className={`inline-flex size-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:border-red-500/30 dark:hover:bg-red-500/10 dark:hover:text-red-300 ${FOCUS_RING}`}
                             title="Hapus"
                             aria-label={`Hapus ${area.name}`}
                         >
@@ -361,14 +417,12 @@ function AreaNode({
     );
 }
 
+/* ---------- Halaman ---------- */
+
 export default function AreasIndex({ areas }: Props) {
     const [search, setSearch] = useState('');
-
-    const [typeFilter, setTypeFilter] = useState<'all' | AreaType>('all');
-
-    const [statusFilter, setStatusFilter] = useState<
-        'all' | 'active' | 'inactive'
-    >('all');
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
     const areaById = useMemo(
         () =>
@@ -484,7 +538,9 @@ export default function AreasIndex({ areas }: Props) {
     };
 
     const boundaryPercent =
-        stats.total > 0 ? Math.round((stats.boundaries / stats.total) * 100) : 0;
+        stats.total > 0
+            ? Math.round((stats.boundaries / stats.total) * 100)
+            : 0;
 
     const toggle = (id: number) => {
         setExpanded((current) => {
@@ -552,33 +608,48 @@ export default function AreasIndex({ areas }: Props) {
     const hasFilter =
         search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all';
 
-    const selectClass =
-        'h-11 rounded-xl border border-input bg-background px-4 text-sm outline-none transition focus:border-navy-400 focus:ring-4 focus:ring-ring/20';
-
     return (
         <>
             <Head title="Manajemen Wilayah" />
 
-            <div className="min-h-full">
-                <div className="mx-auto w-full max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
-                    {/* HERO */}
-                    <section className="animate-fade-in relative overflow-hidden rounded-3xl bg-linear-to-br from-navy-900 via-navy-800 to-navy-600 p-6 text-white shadow-lg shadow-navy-900/20 md:p-8">
-                        <div className="blob animate-blob -top-16 -right-10 size-64 bg-sea-400/40" />
-                        <div className="blob animate-blob-slow -bottom-20 left-1/3 size-56 bg-sun-400/25" />
-                        <div className="blob animate-blob top-1/2 right-1/4 size-40 bg-forest-400/20" />
+            <div className="relative min-h-screen overflow-hidden bg-background">
+                {/* Blob latar halaman */}
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute -top-32 -left-24 size-72 rounded-full bg-navy-400/5 blur-3xl dark:bg-navy-500/10"
+                />
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute top-1/3 -right-24 size-80 rounded-full bg-sea-400/5 blur-3xl dark:bg-sea-500/10"
+                />
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute bottom-0 left-1/3 size-72 rounded-full bg-forest-400/5 blur-3xl dark:bg-forest-500/10"
+                />
+
+                <div className="relative mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8 xl:px-8">
+                    {/* =====================================================
+                        HERO
+                    ====================================================== */}
+                    <section className="relative animate-fade-in overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-sm md:p-7">
+                        <div className="blob -top-16 -right-10 size-64 animate-blob bg-sea-400/20 dark:bg-sea-500/10" />
+                        <div className="blob -bottom-20 left-1/3 size-56 animate-blob-slow bg-sun-400/15 dark:bg-sun-500/10" />
+                        <div className="blob top-1/2 right-1/4 size-40 animate-blob bg-forest-400/10 dark:bg-forest-500/10" />
 
                         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex items-start gap-4">
-                                <span className="animate-float flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20 backdrop-blur">
-                                    <FolderTree className="size-7 text-sun-300" />
+                                <span className="flex size-14 shrink-0 animate-float items-center justify-center rounded-2xl bg-navy-100 text-navy-600 ring-1 ring-navy-200 dark:bg-navy-500/15 dark:text-navy-400 dark:ring-navy-500/30">
+                                    <FolderTree className="size-7" />
                                 </span>
 
                                 <div>
-                                    <h1 className="text-xl font-bold md:text-2xl">
+                                    <p className="mb-1 text-xs font-semibold tracking-wider text-navy-600 uppercase dark:text-navy-400">
+                                        Master Wilayah
+                                    </p>
+                                    <h1 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">
                                         Manajemen Wilayah
                                     </h1>
-
-                                    <p className="mt-1 max-w-lg text-sm text-white/70">
+                                    <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
                                         Kelola Kelurahan, RW, dan RT dalam satu
                                         struktur wilayah.
                                     </p>
@@ -588,7 +659,7 @@ export default function AreasIndex({ areas }: Props) {
                             <div className="flex flex-wrap gap-2">
                                 <Link
                                     href="/admin/areas/create?type=kelurahan"
-                                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-linear-to-r from-sun-400 to-sun-500 px-4 text-sm font-semibold text-navy-950 shadow-md shadow-sun-500/30 transition hover:-translate-y-0.5 hover:shadow-lg"
+                                    className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md dark:bg-sun-400 dark:hover:bg-sun-300 ${FOCUS_RING}`}
                                 >
                                     <Plus className="size-4" />
                                     Tambah Kelurahan
@@ -596,7 +667,7 @@ export default function AreasIndex({ areas }: Props) {
 
                                 <Link
                                     href="/admin/areas/create?type=rw"
-                                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
+                                    className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10 dark:hover:text-navy-400 ${FOCUS_RING}`}
                                 >
                                     <Plus className="size-4" />
                                     Tambah RW
@@ -604,7 +675,7 @@ export default function AreasIndex({ areas }: Props) {
 
                                 <Link
                                     href="/admin/areas/create?type=rt"
-                                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold ring-1 ring-white/20 backdrop-blur transition hover:bg-white/20"
+                                    className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-navy-200 hover:bg-navy-50 hover:text-navy-600 dark:hover:border-navy-500/40 dark:hover:bg-navy-500/10 dark:hover:text-navy-400 ${FOCUS_RING}`}
                                 >
                                     <Plus className="size-4" />
                                     Tambah RT
@@ -613,144 +684,60 @@ export default function AreasIndex({ areas }: Props) {
                         </div>
                     </section>
 
-                    {/* STATS */}
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {/* =====================================================
+                        STATISTIK
+                    ====================================================== */}
+                    <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <StatCard
                             label="Kelurahan"
                             value={stats.kelurahan}
                             description="Wilayah tingkat atas"
                             icon={Building2}
-                            tone="navy"
+                            toneClass="bg-navy-100 text-navy-600 dark:bg-navy-500/15 dark:text-navy-400"
                             delay={0}
                         />
-
                         <StatCard
                             label="RW"
                             value={stats.rw}
                             description="Rukun Warga"
                             icon={Users}
-                            tone="sea"
+                            toneClass="bg-sea-300/30 text-sea-500 dark:bg-sea-500/15 dark:text-sea-300"
+                            valueClass="text-sea-500 dark:text-sea-300"
                             delay={70}
                         />
-
                         <StatCard
                             label="RT"
                             value={stats.rt}
                             description="Rukun Tetangga"
                             icon={MapPin}
-                            tone="forest"
+                            toneClass="bg-forest-100 text-forest-600 dark:bg-forest-500/15 dark:text-forest-400"
+                            valueClass="text-forest-600 dark:text-forest-400"
                             delay={140}
                         />
-
                         <StatCard
                             label="Batas Wilayah"
                             value={stats.boundaries}
                             description={`${boundaryPercent}% dari ${stats.total} wilayah`}
                             icon={MapIcon}
-                            tone="sun"
+                            toneClass="bg-sun-100 text-sun-600 dark:bg-sun-500/15 dark:text-sun-300"
+                            valueClass="text-sun-600 dark:text-sun-400"
                             delay={210}
                         />
-                    </div>
-
-                    {/* FILTER */}
-                    <section className="animate-fade-in-up rounded-2xl border border-border bg-card p-4 shadow-sm [animation-delay:260ms]">
-                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-                            <div className="relative flex-1">
-                                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                                <input
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
-                                    }
-                                    placeholder="Cari wilayah atau wilayah induk..."
-                                    className="h-11 w-full rounded-xl border border-input bg-background pr-4 pl-10 text-sm outline-none transition placeholder:text-muted-foreground focus:border-navy-400 focus:ring-4 focus:ring-ring/20"
-                                />
-                            </div>
-
-                            <select
-                                value={typeFilter}
-                                onChange={(event) =>
-                                    setTypeFilter(
-                                        event.target.value as 'all' | AreaType,
-                                    )
-                                }
-                                className={selectClass}
-                            >
-                                <option value="all">Semua jenis</option>
-                                <option value="kelurahan">Kelurahan</option>
-                                <option value="rw">RW</option>
-                                <option value="rt">RT</option>
-                            </select>
-
-                            <select
-                                value={statusFilter}
-                                onChange={(event) =>
-                                    setStatusFilter(
-                                        event.target.value as
-                                            | 'all'
-                                            | 'active'
-                                            | 'inactive',
-                                    )
-                                }
-                                className={selectClass}
-                            >
-                                <option value="all">Semua status</option>
-                                <option value="active">Aktif</option>
-                                <option value="inactive">Nonaktif</option>
-                            </select>
-
-                            {hasFilter && (
-                                <button
-                                    type="button"
-                                    onClick={resetFilters}
-                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium transition hover:bg-muted"
-                                >
-                                    <RefreshCcw className="size-4" />
-                                    Reset
-                                </button>
-                            )}
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-xs text-muted-foreground">
-                                {visibleIds.size} wilayah terkait dengan hasil
-                                pencarian
-                            </p>
-
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={expandAll}
-                                    className="text-xs font-semibold text-navy-600 hover:underline dark:text-navy-400"
-                                >
-                                    Buka semua
-                                </button>
-
-                                <span className="text-muted-foreground">/</span>
-
-                                <button
-                                    type="button"
-                                    onClick={collapseAll}
-                                    className="text-xs font-semibold text-navy-600 hover:underline dark:text-navy-400"
-                                >
-                                    Tutup semua
-                                </button>
-                            </div>
-                        </div>
                     </section>
 
-                    {/* TREE */}
-                    <section className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm [animation-delay:320ms]">
-                        <div className="border-b border-border bg-muted/40 px-5 py-4">
-                            <div className="flex items-center justify-between gap-3">
+                    {/* =====================================================
+                        STRUKTUR WILAYAH
+                    ====================================================== */}
+                    <section className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm [animation-delay:260ms]">
+                        {/* Toolbar */}
+                        <div className="space-y-4 border-b border-border p-4 md:p-5">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex items-start gap-3">
                                     <span className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-linear-to-b from-sun-400 via-forest-500 to-navy-500" />
                                     <div>
-                                        <h2 className="text-sm font-bold">
+                                        <h2 className="font-semibold text-foreground">
                                             Struktur Wilayah
                                         </h2>
-
                                         <p className="mt-0.5 text-xs text-muted-foreground">
                                             Kelurahan → RW → RT
                                         </p>
@@ -761,8 +748,89 @@ export default function AreasIndex({ areas }: Props) {
                                     {stats.active} dari {stats.total} aktif
                                 </span>
                             </div>
+
+                            <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                                <div className="relative min-w-0 flex-1">
+                                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                    <input
+                                        type="search"
+                                        value={search}
+                                        onChange={(event) =>
+                                            setSearch(event.target.value)
+                                        }
+                                        placeholder="Cari wilayah atau wilayah induk..."
+                                        aria-label="Cari wilayah"
+                                        className="h-10 w-full rounded-xl border border-border bg-background pr-9 pl-9 text-sm text-foreground transition outline-none placeholder:text-muted-foreground focus:border-navy-500 focus:ring-2 focus:ring-navy-500/20 dark:focus:ring-navy-400/30"
+                                    />
+                                    {search && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearch('')}
+                                            aria-label="Hapus pencarian"
+                                            className={`absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground ${FOCUS_RING}`}
+                                        >
+                                            <X className="size-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <Segmented
+                                    label="Filter jenis wilayah"
+                                    options={TYPE_FILTERS}
+                                    value={typeFilter}
+                                    onChange={setTypeFilter}
+                                />
+
+                                <Segmented
+                                    label="Filter status wilayah"
+                                    options={STATUS_FILTERS}
+                                    value={statusFilter}
+                                    onChange={setStatusFilter}
+                                />
+
+                                {hasFilter && (
+                                    <button
+                                        type="button"
+                                        onClick={resetFilters}
+                                        className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-semibold text-foreground transition hover:bg-muted ${FOCUS_RING}`}
+                                    >
+                                        <RefreshCcw className="size-3.5" />
+                                        Reset
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <p className="text-xs text-muted-foreground">
+                                    {visibleIds.size} wilayah terkait dengan
+                                    hasil pencarian
+                                </p>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={expandAll}
+                                        className={`rounded text-xs font-semibold text-navy-600 hover:underline dark:text-navy-400 ${FOCUS_RING}`}
+                                    >
+                                        Buka semua
+                                    </button>
+
+                                    <span className="text-muted-foreground">
+                                        /
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        onClick={collapseAll}
+                                        className={`rounded text-xs font-semibold text-navy-600 hover:underline dark:text-navy-400 ${FOCUS_RING}`}
+                                    >
+                                        Tutup semua
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
+                        {/* Konten */}
                         {rootAreas.length > 0 ? (
                             <div>
                                 {rootAreas.map((area) => (
@@ -777,30 +845,40 @@ export default function AreasIndex({ areas }: Props) {
                                 ))}
                             </div>
                         ) : (
-                            <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
-                                <div className="animate-float flex size-16 items-center justify-center rounded-full bg-navy-100 text-navy-500 dark:bg-navy-500/15">
+                            <div className="flex animate-fade-in flex-col items-center justify-center px-6 py-16 text-center">
+                                <div className="flex size-16 animate-float items-center justify-center rounded-2xl bg-sun-100 text-sun-600 ring-1 ring-sun-300/50 dark:bg-sun-500/15 dark:text-sun-300 dark:ring-sun-500/20">
                                     <FolderTree className="size-8" />
                                 </div>
 
-                                <h3 className="mt-4 text-sm font-semibold">
-                                    Tidak ada wilayah
+                                <h3 className="mt-4 text-sm font-semibold text-foreground">
+                                    {hasFilter
+                                        ? 'Wilayah tidak ditemukan'
+                                        : 'Belum ada wilayah'}
                                 </h3>
 
-                                <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                                <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
                                     {areas.length === 0
                                         ? 'Mulai dengan menambahkan Kelurahan pertama.'
-                                        : 'Belum ada wilayah yang sesuai dengan filter saat ini.'}
+                                        : 'Coba ubah kata kunci atau filter yang digunakan.'}
                                 </p>
 
-                                {hasFilter && (
+                                {hasFilter ? (
                                     <button
                                         type="button"
                                         onClick={resetFilters}
-                                        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold transition hover:bg-muted"
+                                        className={`mt-5 inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted ${FOCUS_RING}`}
                                     >
                                         <RefreshCcw className="size-4" />
                                         Reset filter
                                     </button>
+                                ) : (
+                                    <Link
+                                        href="/admin/areas/create?type=kelurahan"
+                                        className={`mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${FOCUS_RING}`}
+                                    >
+                                        <Plus className="size-4" />
+                                        Tambah Kelurahan
+                                    </Link>
                                 )}
                             </div>
                         )}
