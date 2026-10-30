@@ -21,7 +21,9 @@ import {
     type ReactNode,
 } from "react";
 
-import LocationPicker from "@/components/report/location-picker";
+import LocationPicker, {
+    type PointGeo,
+} from "@/components/report/location-picker";
 import {
     MAX_PHOTOS,
     SEVERITY_META,
@@ -92,6 +94,27 @@ export default function ReportForm({
     }, [areas]);
 
     /* ---------- Lokasi ---------- */
+
+    // LocationPicker mengirim satu objek GeoJSON Point: [lng, lat].
+    function handlePickerChange(geo: PointGeo | null) {
+        if (!geo) {
+            setData((current) => ({
+                ...current,
+                latitude: "",
+                longitude: "",
+            }));
+
+            return;
+        }
+
+        const [lng, lat] = geo.coordinates;
+
+        setData((current) => ({
+            ...current,
+            latitude: lat.toFixed(7),
+            longitude: lng.toFixed(7),
+        }));
+    }
 
     function handleUseGps() {
         if (!navigator.geolocation) {
@@ -364,13 +387,7 @@ export default function ReportForm({
                 areaId={data.area_id}
                 latitude={data.latitude}
                 longitude={data.longitude}
-                onChange={(lat, lng) =>
-                    setData((current) => ({
-                        ...current,
-                        latitude: lat.toFixed(7),
-                        longitude: lng.toFixed(7),
-                    }))
-                }
+                onChange={handlePickerChange}
                 error={errors.latitude || errors.longitude}
             />
 

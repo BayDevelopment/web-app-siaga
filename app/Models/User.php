@@ -7,19 +7,23 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
  * @property string $name
  * @property string $email
+ * @property string|null $phone
+ * @property string $role
+ * @property bool $is_active
+ * @property int|null $area_id
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
@@ -29,26 +33,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable([
-    'name',
-    'email',
-    'password',
-    'phone',
-    'role',
-    'is_active',
-    'area_id',
-])]
+// role, is_active, area_id sengaja TIDAK di sini. Set lewat seeder / panel admin
+// dengan forceFill() atau assignment langsung.
+#[Fillable(['name', 'email', 'phone', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_PETUGAS = 'petugas';
+    public const ROLE_WARGA = 'warga';
+
     protected function casts(): array
     {
         return [
@@ -71,21 +68,21 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 
     public function isAdmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->role === self::ROLE_ADMIN;
     }
 
     public function isPetugas(): bool
     {
-        return $this->role === 'petugas';
+        return $this->role === self::ROLE_PETUGAS;
     }
 
     public function isStaff(): bool
     {
-        return in_array($this->role, ['admin', 'petugas'], true);
+        return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_PETUGAS], true);
     }
 
     public function isWarga(): bool
     {
-        return $this->role === 'warga';
+        return $this->role === self::ROLE_WARGA;
     }
 }

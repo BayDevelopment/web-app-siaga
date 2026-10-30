@@ -1,7 +1,12 @@
+export type UserRole = 'admin' | 'petugas' | 'warga';
+
 export type User = {
     id: number;
     name: string;
     email: string;
+    phone: string | null;
+    role: UserRole;
+    is_active: boolean;
     avatar?: string;
     email_verified_at: string | null;
     two_factor_enabled?: boolean;

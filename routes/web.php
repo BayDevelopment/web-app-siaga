@@ -101,6 +101,31 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Admin & Petugas (hanya lihat)
+|--------------------------------------------------------------------------
+|
+| Petugas boleh melihat daftar zona rawan dan fasilitas darurat sebagai
+| referensi lapangan, tetapi tidak boleh menambah, mengubah, atau menghapus.
+|
+*/
+
+Route::middleware(['auth', 'verified', 'role:admin,petugas'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+
+        // Zona rawan (daftar saja)
+        Route::resource('hazard-zones', HazardZoneController::class)
+            ->only('index');
+
+        // Fasilitas darurat (daftar saja)
+        Route::resource('facilities', FacilityController::class)
+            ->only('index');
+    });
+
+
+/*
+|--------------------------------------------------------------------------
 | Admin
 |--------------------------------------------------------------------------
 |
@@ -117,13 +142,13 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::resource('areas', AreaController::class)
             ->except('show');
 
-        // Zona rawan
+        // Zona rawan (index sudah ada di grup admin & petugas)
         Route::resource('hazard-zones', HazardZoneController::class)
-            ->except('show');
+            ->except(['show', 'index']);
 
-        // Fasilitas darurat
+        // Fasilitas darurat (index sudah ada di grup admin & petugas)
         Route::resource('facilities', FacilityController::class)
-            ->except('show');
+            ->except(['show', 'index']);
 
         // Jenis bencana
         Route::resource('disaster-types', DisasterTypeController::class)

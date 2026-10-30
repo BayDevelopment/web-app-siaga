@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import type { LucideIcon } from 'lucide-react';
 import {
     Building2,
@@ -45,6 +45,10 @@ type Facility = {
 
 type Props = {
     facilities?: Facility[] | null;
+};
+
+type SharedProps = {
+    auth?: { user?: { role?: string } | null };
 };
 
 type TypeFilter = 'all' | string;
@@ -123,13 +127,23 @@ function StatCardSkeleton({ delay }: { delay: number }) {
     );
 }
 
-function TableSkeleton({ rows = 5 }: { rows?: number }) {
+function TableSkeleton({
+    rows = 5,
+    showActions,
+}: {
+    rows?: number;
+    showActions: boolean;
+}) {
     return (
         <div className="divide-y divide-border">
             {Array.from({ length: rows }).map((_, index) => (
                 <div
                     key={index}
-                    className="grid min-w-[900px] grid-cols-[2fr_1.2fr_1.3fr_1.4fr_0.9fr_1.3fr] items-center gap-4 px-5 py-4"
+                    className={`grid min-w-[900px] items-center gap-4 px-5 py-4 ${
+                        showActions
+                            ? 'grid-cols-[2fr_1.2fr_1.3fr_1.4fr_0.9fr_1.3fr]'
+                            : 'grid-cols-[2fr_1.2fr_1.3fr_1.4fr_0.9fr]'
+                    }`}
                 >
                     <div className="flex items-center gap-3">
                         <div className="skeleton size-10 shrink-0 rounded-xl" />
@@ -148,17 +162,25 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
                         <div className="skeleton h-3 w-24" />
                     </div>
                     <div className="skeleton h-6 w-16 rounded-full" />
-                    <div className="flex justify-end gap-2">
-                        <div className="skeleton h-9 w-16 rounded-xl" />
-                        <div className="skeleton h-9 w-20 rounded-xl" />
-                    </div>
+                    {showActions && (
+                        <div className="flex justify-end gap-2">
+                            <div className="skeleton h-9 w-16 rounded-xl" />
+                            <div className="skeleton h-9 w-20 rounded-xl" />
+                        </div>
+                    )}
                 </div>
             ))}
         </div>
     );
 }
 
-function CardListSkeleton({ rows = 4 }: { rows?: number }) {
+function CardListSkeleton({
+    rows = 4,
+    showActions,
+}: {
+    rows?: number;
+    showActions: boolean;
+}) {
     return (
         <div className="divide-y divide-border">
             {Array.from({ length: rows }).map((_, index) => (
@@ -172,10 +194,12 @@ function CardListSkeleton({ rows = 4 }: { rows?: number }) {
                         <div className="skeleton h-6 w-16 rounded-full" />
                     </div>
                     <div className="skeleton h-3 w-3/4" />
-                    <div className="flex justify-end gap-2">
-                        <div className="skeleton h-9 w-16 rounded-xl" />
-                        <div className="skeleton h-9 w-20 rounded-xl" />
-                    </div>
+                    {showActions && (
+                        <div className="flex justify-end gap-2">
+                            <div className="skeleton h-9 w-16 rounded-xl" />
+                            <div className="skeleton h-9 w-20 rounded-xl" />
+                        </div>
+                    )}
                 </div>
             ))}
         </div>
@@ -292,7 +316,13 @@ function ActionButtons({
     );
 }
 
-function EmptyState({ isFiltering }: { isFiltering: boolean }) {
+function EmptyState({
+    isFiltering,
+    isAdmin,
+}: {
+    isFiltering: boolean;
+    isAdmin: boolean;
+}) {
     return (
         <div className="flex animate-fade-in flex-col items-center justify-center px-6 py-16 text-center">
             <div className="flex size-16 animate-float items-center justify-center rounded-2xl bg-sun-100 text-sun-600 ring-1 ring-sun-300/50 dark:bg-sun-500/15 dark:text-sun-300 dark:ring-sun-500/20">
@@ -308,10 +338,12 @@ function EmptyState({ isFiltering }: { isFiltering: boolean }) {
             <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
                 {isFiltering
                     ? 'Coba ubah kata kunci atau filter jenis fasilitas.'
-                    : 'Tambahkan fasilitas darurat untuk menampilkannya pada peta kejadian.'}
+                    : isAdmin
+                      ? 'Tambahkan fasilitas darurat untuk menampilkannya pada peta kejadian.'
+                      : 'Belum ada data fasilitas darurat yang ditambahkan admin.'}
             </p>
 
-            {!isFiltering && (
+            {!isFiltering && isAdmin && (
                 <Link
                     href="/admin/facilities/create"
                     className={`mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${FOCUS_RING}`}
@@ -329,6 +361,11 @@ function EmptyState({ isFiltering }: { isFiltering: boolean }) {
 export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
     // Inertia bisa mengirim null / tidak mengirim prop sama sekali.
     const facilities = facilitiesProp ?? EMPTY_FACILITIES;
+
+    // Hanya admin yang boleh menambah, mengubah, dan menghapus.
+    // Petugas hanya melihat (pembatasan sebenarnya ada di routes/web.php).
+    const { auth } = usePage<SharedProps>().props;
+    const isAdmin = auth?.user?.role === 'admin';
 
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
@@ -477,20 +514,22 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                         Fasilitas Darurat
                                     </h1>
                                     <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                        Kelola titik fasilitas yang dapat
-                                        digunakan untuk mendukung penanganan
-                                        keadaan darurat di wilayah.
+                                        {isAdmin
+                                            ? 'Kelola titik fasilitas yang dapat digunakan untuk mendukung penanganan keadaan darurat di wilayah.'
+                                            : 'Lihat titik fasilitas yang dapat digunakan untuk mendukung penanganan keadaan darurat di wilayah.'}
                                     </p>
                                 </div>
                             </div>
 
-                            <Link
-                                href="/admin/facilities/create"
-                                className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md dark:bg-sun-400 dark:hover:bg-sun-300 ${FOCUS_RING}`}
-                            >
-                                <Plus className="size-4" />
-                                Tambah Fasilitas
-                            </Link>
+                            {isAdmin && (
+                                <Link
+                                    href="/admin/facilities/create"
+                                    className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md dark:bg-sun-400 dark:hover:bg-sun-300 ${FOCUS_RING}`}
+                                >
+                                    <Plus className="size-4" />
+                                    Tambah Fasilitas
+                                </Link>
+                            )}
                         </div>
                     </section>
 
@@ -594,14 +633,20 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                         {loading ? (
                             <>
                                 <div className="lg:hidden">
-                                    <CardListSkeleton />
+                                    <CardListSkeleton showActions={isAdmin} />
                                 </div>
                                 <div className="hidden overflow-x-auto lg:block">
-                                    <TableSkeleton rows={5} />
+                                    <TableSkeleton
+                                        rows={5}
+                                        showActions={isAdmin}
+                                    />
                                 </div>
                             </>
                         ) : filteredFacilities.length === 0 ? (
-                            <EmptyState isFiltering={isFiltering} />
+                            <EmptyState
+                                isFiltering={isFiltering}
+                                isAdmin={isAdmin}
+                            />
                         ) : (
                             <>
                                 {/* Mobile: kartu */}
@@ -658,12 +703,14 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                 </span>
                                             </div>
 
-                                            <div className="mt-3">
-                                                <ActionButtons
-                                                    facility={facility}
-                                                    onDelete={handleDelete}
-                                                />
-                                            </div>
+                                            {isAdmin && (
+                                                <div className="mt-3">
+                                                    <ActionButtons
+                                                        facility={facility}
+                                                        onDelete={handleDelete}
+                                                    />
+                                                </div>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>
@@ -691,9 +738,11 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                 <th className="px-5 py-3.5 font-semibold">
                                                     Status
                                                 </th>
-                                                <th className="px-5 py-3.5 text-right font-semibold">
-                                                    Aksi
-                                                </th>
+                                                {isAdmin && (
+                                                    <th className="px-5 py-3.5 text-right font-semibold">
+                                                        Aksi
+                                                    </th>
+                                                )}
                                             </tr>
                                         </thead>
 
@@ -802,16 +851,18 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
                                                             />
                                                         </td>
 
-                                                        <td className="px-5 py-4">
-                                                            <ActionButtons
-                                                                facility={
-                                                                    facility
-                                                                }
-                                                                onDelete={
-                                                                    handleDelete
-                                                                }
-                                                            />
-                                                        </td>
+                                                        {isAdmin && (
+                                                            <td className="px-5 py-4">
+                                                                <ActionButtons
+                                                                    facility={
+                                                                        facility
+                                                                    }
+                                                                    onDelete={
+                                                                        handleDelete
+                                                                    }
+                                                                />
+                                                            </td>
+                                                        )}
                                                     </tr>
                                                 ),
                                             )}
@@ -825,61 +876,63 @@ export default function FacilityIndex({ facilities: facilitiesProp }: Props) {
             </div>
 
             {/* =====================================================
-                KONFIRMASI HAPUS
+                KONFIRMASI HAPUS (hanya admin)
             ====================================================== */}
-            <Dialog
-                open={deleteOpen}
-                onOpenChange={(open) => {
-                    if (!open && !deleting) {
-                        setDeleteOpen(false);
-                    }
-                }}
-            >
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
-                            <TriangleAlert className="size-6" />
-                        </div>
+            {isAdmin && (
+                <Dialog
+                    open={deleteOpen}
+                    onOpenChange={(open) => {
+                        if (!open && !deleting) {
+                            setDeleteOpen(false);
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
+                                <TriangleAlert className="size-6" />
+                            </div>
 
-                        <DialogTitle>Hapus fasilitas?</DialogTitle>
+                            <DialogTitle>Hapus fasilitas?</DialogTitle>
 
-                        <DialogDescription>
-                            <span className="font-semibold text-foreground">
-                                {deleteTarget?.name}
-                            </span>
-                            {deleteTarget &&
-                                ` (${typeLabel(deleteTarget.type)})`}{' '}
-                            akan dihapus dari daftar dan peta kejadian.
-                            Tindakan ini tidak dapat dibatalkan.
-                        </DialogDescription>
-                    </DialogHeader>
+                            <DialogDescription>
+                                <span className="font-semibold text-foreground">
+                                    {deleteTarget?.name}
+                                </span>
+                                {deleteTarget &&
+                                    ` (${typeLabel(deleteTarget.type)})`}{' '}
+                                akan dihapus dari daftar dan peta kejadian.
+                                Tindakan ini tidak dapat dibatalkan.
+                            </DialogDescription>
+                        </DialogHeader>
 
-                    <DialogFooter className="gap-2 sm:gap-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={deleting}
-                            onClick={() => setDeleteOpen(false)}
-                        >
-                            Batal
-                        </Button>
+                        <DialogFooter className="gap-2 sm:gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={deleting}
+                                onClick={() => setDeleteOpen(false)}
+                            >
+                                Batal
+                            </Button>
 
-                        <Button
-                            type="button"
-                            variant="destructive"
-                            disabled={deleting}
-                            onClick={confirmDelete}
-                        >
-                            {deleting ? (
-                                <LoaderCircle className="size-4 animate-spin" />
-                            ) : (
-                                <Trash2 className="size-4" />
-                            )}
-                            {deleting ? 'Menghapus...' : 'Ya, hapus'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                disabled={deleting}
+                                onClick={confirmDelete}
+                            >
+                                {deleting ? (
+                                    <LoaderCircle className="size-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="size-4" />
+                                )}
+                                {deleting ? 'Menghapus...' : 'Ya, hapus'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
         </>
     );
 }

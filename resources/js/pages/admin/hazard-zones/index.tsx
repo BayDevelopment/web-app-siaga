@@ -1,4 +1,4 @@
-import { Head, Link, router } from "@inertiajs/react";
+import { Head, Link, router, usePage } from "@inertiajs/react";
 import {
     Edit,
     Map as MapIcon,
@@ -43,6 +43,10 @@ type HazardZone = {
 
 type Props = {
     zones?: HazardZone[] | null;
+};
+
+type SharedProps = {
+    auth?: { user?: { role?: string } | null };
 };
 
 type LevelFilter = "all" | Level;
@@ -215,6 +219,11 @@ export default function HazardZonesIndex({ zones: zonesProp }: Props) {
     // Inertia bisa mengirim null / tidak mengirim prop sama sekali.
     const zones = zonesProp ?? EMPTY_ZONES;
 
+    // Hanya admin yang boleh menambah, mengubah, dan menghapus.
+    // Petugas hanya melihat (pembatasan sebenarnya ada di routes/web.php).
+    const { auth } = usePage<SharedProps>().props;
+    const isAdmin = auth?.user?.role === "admin";
+
     const [search, setSearch] = useState("");
     const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
 
@@ -301,20 +310,22 @@ export default function HazardZonesIndex({ zones: zonesProp }: Props) {
                                         Zona Rawan
                                     </h1>
                                     <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                                        Kelola wilayah yang memiliki potensi
-                                        risiko bencana dan pantau tingkat
-                                        kerawanannya.
+                                        {isAdmin
+                                            ? "Kelola wilayah yang memiliki potensi risiko bencana dan pantau tingkat kerawanannya."
+                                            : "Lihat wilayah yang memiliki potensi risiko bencana dan tingkat kerawanannya."}
                                     </p>
                                 </div>
                             </div>
 
-                            <Link
-                                href="/admin/hazard-zones/create"
-                                className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md dark:bg-sun-400 dark:hover:bg-sun-300 ${FOCUS_RING}`}
-                            >
-                                <Plus className="size-4" />
-                                Tambah Zona
-                            </Link>
+                            {isAdmin && (
+                                <Link
+                                    href="/admin/hazard-zones/create"
+                                    className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-sun-500 px-5 py-3 text-sm font-semibold text-navy-950 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sun-400 hover:shadow-md dark:bg-sun-400 dark:hover:bg-sun-300 ${FOCUS_RING}`}
+                                >
+                                    <Plus className="size-4" />
+                                    Tambah Zona
+                                </Link>
+                            )}
                         </div>
                     </section>
 
@@ -448,9 +459,11 @@ export default function HazardZonesIndex({ zones: zonesProp }: Props) {
                                 <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
                                     {isFiltering
                                         ? "Coba ubah kata kunci atau filter tingkat risiko."
-                                        : "Tambahkan zona rawan untuk menampilkannya pada peta kejadian."}
+                                        : isAdmin
+                                          ? "Tambahkan zona rawan untuk menampilkannya pada peta kejadian."
+                                          : "Belum ada data zona rawan yang ditambahkan admin."}
                                 </p>
-                                {!isFiltering && (
+                                {!isFiltering && isAdmin && (
                                     <Link
                                         href="/admin/hazard-zones/create"
                                         className={`mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${FOCUS_RING}`}
@@ -495,12 +508,14 @@ export default function HazardZonesIndex({ zones: zonesProp }: Props) {
                                                 <ShapeBadge zone={zone} />
                                             </div>
 
-                                            <div className="mt-3">
-                                                <ActionButtons
-                                                    zone={zone}
-                                                    onDelete={handleDelete}
-                                                />
-                                            </div>
+                                            {isAdmin && (
+                                                <div className="mt-3">
+                                                    <ActionButtons
+                                                        zone={zone}
+                                                        onDelete={handleDelete}
+                                                    />
+                                                </div>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>
@@ -528,9 +543,11 @@ export default function HazardZonesIndex({ zones: zonesProp }: Props) {
                                                 <th className="px-5 py-3.5 font-semibold">
                                                     Bentuk
                                                 </th>
-                                                <th className="px-5 py-3.5 text-right font-semibold">
-                                                    Aksi
-                                                </th>
+                                                {isAdmin && (
+                                                    <th className="px-5 py-3.5 text-right font-semibold">
+                                                        Aksi
+                                                    </th>
+                                                )}
                                             </tr>
                                         </thead>
 
@@ -598,14 +615,16 @@ export default function HazardZonesIndex({ zones: zonesProp }: Props) {
                                                         />
                                                     </td>
 
-                                                    <td className="px-5 py-4">
-                                                        <ActionButtons
-                                                            zone={zone}
-                                                            onDelete={
-                                                                handleDelete
-                                                            }
-                                                        />
-                                                    </td>
+                                                    {isAdmin && (
+                                                        <td className="px-5 py-4">
+                                                            <ActionButtons
+                                                                zone={zone}
+                                                                onDelete={
+                                                                    handleDelete
+                                                                }
+                                                            />
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             ))}
                                         </tbody>

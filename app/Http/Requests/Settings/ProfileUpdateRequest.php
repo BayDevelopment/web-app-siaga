@@ -1,22 +1,67 @@
 <?php
 
-namespace App\Http\Requests\Settings;
+namespace App\Concerns;
 
-use App\Concerns\ProfileValidationRules;
-use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
+use App\Models\User;
+use Illuminate\Validation\Rule;
 
-class ProfileUpdateRequest extends FormRequest
+trait ProfileValidationRules
 {
-    use ProfileValidationRules;
+    /**
+     * Aturan validasi profil (dipakai register dan update profil).
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    protected function profileRules(?int $userId = null): array
+    {
+        return [
+            'name' => $this->nameRules(),
+            'email' => $this->emailRules($userId),
+            'phone' => $this->phoneRules($userId),
+        ];
+    }
+
+    protected function nameRules(): array
+    {
+        return ['required', 'string', 'max:255'];
+    }
+
+    protected function emailRules(?int $userId = null): array
+    {
+        return [
+            'required',
+            'string',
+            'email',
+            'max:255',
+            $userId === null
+                ? Rule::unique(User::class)
+                : Rule::unique(User::class)->ignore($userId),
+        ];
+    }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, ValidationRule|array<mixed>|string>
+     * Nomor sudah dinormalisasi ke 628xxxxxxxxxx sebelum divalidasi.
      */
-    public function rules(): array
+    protected function phoneRules(?int $userId = null): array
     {
-        return $this->profileRules($this->user()->id);
+        return [
+            'required',
+            'string',
+            'regex:/^628[0-9]{8,12}$/',
+            $userId === null
+                ? Rule::unique(User::class)
+                : Rule::unique(User::class)->ignore($userId),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function phoneMessages(): array
+    {
+        return [
+            'phone.regex' => 'Format nomor WhatsApp tidak valid. Contoh: 081234567890.',
+            'phone.unique' => 'Nomor WhatsApp ini sudah digunakan.',
+        ];
     }
 }
