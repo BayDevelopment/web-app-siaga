@@ -1,67 +1,21 @@
 <?php
 
-namespace App\Concerns;
+namespace App\Http\Requests\Settings;
 
-use App\Models\User;
-use Illuminate\Validation\Rule;
+use App\Concerns\ProfileValidationRules;
+use Illuminate\Foundation\Http\FormRequest;
 
-trait ProfileValidationRules
+class ProfileUpdateRequest extends FormRequest
 {
-    /**
-     * Aturan validasi profil (dipakai register dan update profil).
-     *
-     * @return array<string, array<int, mixed>>
-     */
-    protected function profileRules(?int $userId = null): array
+    use ProfileValidationRules;
+
+    public function rules(): array
     {
-        return [
-            'name' => $this->nameRules(),
-            'email' => $this->emailRules($userId),
-            'phone' => $this->phoneRules($userId),
-        ];
+        return $this->profileRules($this->user()->id);
     }
 
-    protected function nameRules(): array
+    public function messages(): array
     {
-        return ['required', 'string', 'max:255'];
-    }
-
-    protected function emailRules(?int $userId = null): array
-    {
-        return [
-            'required',
-            'string',
-            'email',
-            'max:255',
-            $userId === null
-                ? Rule::unique(User::class)
-                : Rule::unique(User::class)->ignore($userId),
-        ];
-    }
-
-    /**
-     * Nomor sudah dinormalisasi ke 628xxxxxxxxxx sebelum divalidasi.
-     */
-    protected function phoneRules(?int $userId = null): array
-    {
-        return [
-            'required',
-            'string',
-            'regex:/^628[0-9]{8,12}$/',
-            $userId === null
-                ? Rule::unique(User::class)
-                : Rule::unique(User::class)->ignore($userId),
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function phoneMessages(): array
-    {
-        return [
-            'phone.regex' => 'Format nomor WhatsApp tidak valid. Contoh: 081234567890.',
-            'phone.unique' => 'Nomor WhatsApp ini sudah digunakan.',
-        ];
+        return $this->phoneMessages();
     }
 }

@@ -48,6 +48,29 @@ type CreateFormData = ReportFormData & {
 const inputClass =
     "w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-navy-500 focus:ring-2 focus:ring-navy-500/15 dark:focus:ring-navy-400/30";
 
+/**
+ * Penyesuaian dark mode untuk <ReportForm />.
+ * ReportForm masih memakai warna keras (bg-white, slate-*), jadi di sini
+ * ditimpa ke token tema saat mode gelap. Perbaikan permanen: ganti warna
+ * keras di report-form.tsx dengan token (bg-card, border-border, dst.),
+ * lalu hapus konstanta ini.
+ */
+const reportFormDarkFix = [
+    "dark:[&_.bg-white]:bg-card",
+    "dark:[&_.bg-slate-50]:bg-muted/50",
+    "dark:[&_.bg-slate-100]:bg-muted",
+    "dark:[&_.border-slate-200]:border-border",
+    "dark:[&_.border-slate-300]:border-border",
+    "dark:[&_.text-slate-900]:text-foreground",
+    "dark:[&_.text-slate-800]:text-foreground",
+    "dark:[&_.text-slate-700]:text-foreground",
+    "dark:[&_.text-slate-600]:text-muted-foreground",
+    "dark:[&_.text-slate-500]:text-muted-foreground",
+    "dark:[&_.text-slate-400]:text-muted-foreground",
+    "dark:[&_.bg-slate-900]:bg-navy-600",
+    "dark:[&_.border-slate-900]:border-navy-500",
+].join(" ");
+
 /* ---------- Helper animasi & skeleton ---------- */
 
 function Reveal({
@@ -408,7 +431,7 @@ export default function Create({ types, areas }: Props) {
                         <FormSkeleton />
                     ) : (
                         <Reveal delay={120}>
-                            <div className="min-w-0">
+                            <div className={`min-w-0 ${reportFormDarkFix}`}>
                                 <ReportForm
                                     form={
                                         form as unknown as ComponentProps<
